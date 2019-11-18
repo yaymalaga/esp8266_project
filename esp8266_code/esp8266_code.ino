@@ -37,28 +37,39 @@ void setup_wifi() {
   Serial.println(WiFi.localIP());
 }
 
-void reconnect() {
-  while (!client.connected()) {
-    Serial.print("Attempting MQTT connection...");
+void check_connection() {
+  // Documentation: int connected ()
+  // Documentation: boolean loop ()
+  if (!client.connected() || !client.loop()) {
+    bool connection_ok = false;
+    while (!connection_ok) {
+      Serial.print("Attempting MQTT connection...");
 
-    // Create a random client ID
-    String clientId = "ESP8266Client-";
-    clientId += String(random(0xffff), HEX);
+      // Create a random client ID
+      String clientId = "ESP8266Client-";
+      clientId += String(random(0xffff), HEX);
 
-    // TODO: Change
-    // Attempt to connect and set the LWT message
-    if (client.connect(clientId.c_str(),"","","GRUPOG/tele/LWT",0,1,"GrupoG Offline")) {
-      Serial.println("connected");
-      // Once connected, publish an retained announcement
-      client.publish("GRUPOG/tele/LWT", "GrupoG Online", true);
-      // ... and resubscribe
-      client.subscribe("GRUPOG/cmnd/power");
-    } else {
-      Serial.print("failed, rc=");
-      Serial.print(client.state());
-      Serial.println(" try again in 5 seconds");
-      // Wait 5 seconds before retrying
-      delay(5000);
+      // TODO: Change
+
+      // Documentation: boolean connect (clientID, username, password, willTopic, willQoS, willRetain, willMessage, cleanSession)
+      bool connection_ok = client.connect(clientId.c_str(),"","","GRUPOG/tele/LWT",0,1,"GrupoG Offline");
+      if (connection_ok == true) {
+        Serial.println("connected");
+        // Documentation: int publish (topic, payload, retained)
+        connection_ok = client.publish("GRUPOG/tele/LWT", "GrupoG Online", true);
+        // Documentation: bool subscribe (topic, [qos])
+        if (connection_ok == true) {
+          client.subscribe("example",1);
+        }
+      }
+
+      if (connection_ok == false) {
+        Serial.print("failed, rc=");
+        Serial.print(client.state());
+        Serial.println(" try again in 5 seconds");
+        // Wait 2 seconds before retrying
+        delay(2000);
+      }
     }
   }
 }
@@ -90,12 +101,35 @@ void loop() {
   if (!deep_sleep) {
     deep_sleep = true;
 
-    if (!client.connected()) {
-      reconnect();
-    }
-    client.loop();
+    int tries = 0;
+    while (tries <= 1) {
+      tries++;
 
-    //Deep-sleep for 3s. Small wait just in case
+      check_connection();
+
+      // Documentation: subscribe (topic, [qos])
+      if (!client.publish("example1","demo")) {
+        continue;
+      } else {
+        break; // Or tries = 2;
+      }
+    }
+
+    tries = 0;
+    while (tries <= 1) {
+      tries++;
+
+      check_connection();
+
+      // Documentation: subscribe (topic, [qos])
+      if (!client.publish("example2","demo2")) {
+        continue;
+      } else {
+        break; // Or tries = 2;
+      }
+    }
+
+    // Small wait just in case
     lastTime = millis();
     nowTime = lastTime;
     while(nowTime - lastTime < 1000){
@@ -103,6 +137,7 @@ void loop() {
       client.loop();
     }
 
+    //Deep-sleep for 3s
     int deep_sleep_time = 3; // TODO: Read from json
     ESP.deepSleep(deep_sleep_time*1000000);
   }
