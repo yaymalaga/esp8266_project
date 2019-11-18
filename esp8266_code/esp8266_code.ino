@@ -9,8 +9,11 @@ WiFiClient espClient;
 PubSubClient client(espClient);
 
 // Parámetros generales
-bool deep_sleep = false;
 long nowTime, lastTime = 0;
+//Deep-Sleep parameters
+float param_DeepSleep;
+int time_DeepSleep;
+bool allow_DeepSleep = false;
 
 void setup_wifi() {
   Serial.println();
@@ -48,7 +51,7 @@ void reconnect() {
       // Once connected, publish an retained announcement
       client.publish("GRUPOG/tele/LWT", "GrupoG Online", true);
       // ... and resubscribe
-      client.subscribe("GRUPOG/cmnd/power");
+      client.subscribe("GRUPOG/deep-sleep");
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
@@ -69,6 +72,16 @@ void callback(char* topic, byte* payload, unsigned int length) {
   Serial.println();
 
   // TODO: Handle topic logic
+
+  //Deep-Sleep time configuration according to topic
+  param_DeepSleep = (char)payload[0].toFloat();
+  if (param_DeepSleep >= 1){ //The minimum time for DeepSleep is 1min
+    time_DeepSleep = param_DeepSleep * 60000000;
+  }
+  else {
+    time_DeepSleep = 60000000 //The default value if the msg does not give a valid number is 1min
+  }
+  
 }
 
 void setup() {
@@ -81,22 +94,19 @@ void setup() {
 }
 
 void loop() {
-  if (!deep_sleep) {
-    deep_sleep = true;
-    
     if (!client.connected()) {
       reconnect();
     }
     client.loop();
   
-    //Deep-sleep for 3s. Small wait just in case
+    //Deep-sleep for x min
     lastTime = millis();
     nowTime = lastTime;
     while(nowTime - lastTime < 1000){
       nowTime = millis();
       client.loop();
     }
-  
-    ESP.deepSleep(3000000);
-  }
+    if(allow_DeepSleep){
+    ESP.deepSleep(time_DeepSleep);
+    }
 }
