@@ -40,7 +40,7 @@ void setup_wifi() {
 void reconnect() {
   while (!client.connected()) {
     Serial.print("Attempting MQTT connection...");
-    
+
     // Create a random client ID
     String clientId = "ESP8266Client-";
     clientId += String(random(0xffff), HEX);
@@ -77,9 +77,9 @@ void callback(char* topic, byte* payload, unsigned int length) {
 
 void setup() {
   Serial.begin(115200);
-  
+
   setup_wifi();
-  
+
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
 
@@ -89,12 +89,12 @@ void setup() {
 void loop() {
   if (!deep_sleep) {
     deep_sleep = true;
-    
+
     if (!client.connected()) {
       reconnect();
     }
     client.loop();
-  
+
     //Deep-sleep for 3s. Small wait just in case
     lastTime = millis();
     nowTime = lastTime;
@@ -102,7 +102,9 @@ void loop() {
       nowTime = millis();
       client.loop();
     }
-  
-    ESP.deepSleep(3000000);
+
+    int deep_sleep_time = 3; // TODO: Read from json
+    ESP.deepSleep(deep_sleep_time*1000000);
   }
+  delay(100);
 }
