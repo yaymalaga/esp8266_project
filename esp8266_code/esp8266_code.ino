@@ -1,18 +1,23 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
+#include "DHTesp.h"
 
-// Parámetros de la conexión
+// General parameters
 const char* ssid = "infind";
 const char* password = "1518wifi";
 const char* mqtt_server = "172.16.53.131";
+
+// General objects
 WiFiClient espClient;
 PubSubClient client(espClient);
+DHTesp dht;
 
-// Parámetros generales
+// General variables
 bool deep_sleep = false;
 long nowTime, lastTime = 0;
 
 void setup_wifi() {
+  delay(10);
   Serial.println();
   Serial.print("Connecting to ");
   Serial.print(ssid);
@@ -33,7 +38,6 @@ void setup_wifi() {
 }
 
 void reconnect() {
-  // Loop until we're reconnected
   while (!client.connected()) {
     Serial.print("Attempting MQTT connection...");
     
@@ -78,6 +82,8 @@ void setup() {
   
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
+
+  dht.setup(5, DHTesp::DHT11);
 }
 
 void loop() {
