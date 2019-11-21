@@ -10,10 +10,7 @@ PubSubClient client(espClient);
 
 // Parámetros generales
 long nowTime, lastTime = 0;
-//Deep-Sleep parameters
-float param_DeepSleep;
 int time_DeepSleep;
-bool allow_DeepSleep = false;
 
 void setup_wifi() {
   Serial.println();
@@ -74,7 +71,8 @@ void callback(char* topic, byte* payload, unsigned int length) {
   // TODO: Handle topic logic
 
   //Deep-Sleep time configuration according to topic
-  param_DeepSleep = (char)payload[0].toFloat();
+  float param_DeepSleep;
+  param_DeepSleep = payload.toFloat();
   if (param_DeepSleep >= 1){ //The minimum time for DeepSleep is 1min
     time_DeepSleep = param_DeepSleep * 60000000;
   }
@@ -106,7 +104,6 @@ void loop() {
       nowTime = millis();
       client.loop();
     }
-    if(allow_DeepSleep){
     ESP.deepSleep(time_DeepSleep);
-    }
+
 }
