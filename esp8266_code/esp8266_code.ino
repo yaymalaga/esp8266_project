@@ -1,6 +1,13 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 #include "DHTesp.h"
+#include <ESP8266httpUpdate.h>
+
+#define HTTP_OTA_ADDRESS      F("172.16.53.132")       //TODO arrange this as configurable info //Address of OTA update server
+#define HTTP_OTA_PATH         F("/esp8266-ota/update") // Path to update firmware
+#define HTTP_OTA_PORT         1880                     // Port of update server
+                                                       // Name of firmware
+#define HTTP_OTA_VERSION      String(__FILE__).substring(String(__FILE__).lastIndexOf('\\')+1) + ".nodemcu" 
 
 // General parameters
 const char* ssid = "infind";
@@ -78,8 +85,23 @@ void callback(char* topic, byte* payload, unsigned int length) {
 void setup() {
   Serial.begin(115200);
 
+  Serial.println("Booting");
+  
   setup_wifi();
-
+  Serial.println( "Preparing to update." );
+  
+  switch(ESPhttpUpdate.update(HTTP_OTA_ADDRESS, HTTP_OTA_PORT, HTTP_OTA_PATH, HTTP_OTA_VERSION)) {
+  case HTTP_UPDATE_FAILED:
+    Serial.printf("HTTP update failed: Error (%d): %s\n", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
+    break;
+  case HTTP_UPDATE_NO_UPDATES:
+    Serial.println(F("No updates"));
+    break;
+  case HTTP_UPDATE_OK:
+    Serial.println(F("Update OK"));
+    break;
+  }
+  
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
 
