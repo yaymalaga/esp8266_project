@@ -1,5 +1,6 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
+#include "DHTesp.h"
 #include <ESP8266httpUpdate.h>
 
 #define HTTP_OTA_ADDRESS      F("172.16.53.132")       //TODO arrange this as configurable info //Address of OTA update server
@@ -8,19 +9,22 @@
                                                        // Name of firmware
 #define HTTP_OTA_VERSION      String(__FILE__).substring(String(__FILE__).lastIndexOf('\\')+1) + ".nodemcu" 
 
-
-// Parámetros de la conexión
+// General parameters
 const char* ssid = "infind";
 const char* password = "1518wifi";
 const char* mqtt_server = "172.16.53.131";
+
+// General objects
 WiFiClient espClient;
 PubSubClient client(espClient);
+DHTesp dht;
 
-// Parámetros generales
+// General variables
 bool deep_sleep = false;
 long nowTime, lastTime = 0;
 
 void setup_wifi() {
+  delay(10);
   Serial.println();
   Serial.print("Connecting to ");
   Serial.print(ssid);
@@ -41,10 +45,9 @@ void setup_wifi() {
 }
 
 void reconnect() {
-  // Loop until we're reconnected
   while (!client.connected()) {
     Serial.print("Attempting MQTT connection...");
-    
+
     // Create a random client ID
     String clientId = "ESP8266Client-";
     clientId += String(random(0xffff), HEX);
@@ -101,17 +104,19 @@ void setup() {
   
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
+
+  dht.setup(5, DHTesp::DHT11);
 }
 
 void loop() {
   if (!deep_sleep) {
     deep_sleep = true;
-    
+
     if (!client.connected()) {
       reconnect();
     }
     client.loop();
-  
+
     //Deep-sleep for 3s. Small wait just in case
     lastTime = millis();
     nowTime = lastTime;
@@ -119,9 +124,9 @@ void loop() {
       nowTime = millis();
       client.loop();
     }
-    
-    //TODO add debug part for final testing of OTA update
-    
-    ESP.deepSleep(3000000);
+
+    int deep_sleep_time = 3; // TODO: Read from json
+    ESP.deepSleep(deep_sleep_time*1000000);
   }
+  delay(100);
 }
