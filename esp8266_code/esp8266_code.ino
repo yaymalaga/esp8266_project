@@ -1,5 +1,15 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
+#include <ESP8266mDNS.h>
+#include <WiFiUdp.h>
+#include <ESP8266httpUpdate.h>
+
+#define HTTP_OTA_ADDRESS      F("172.16.53.132")       // Address of OTA update server
+#define HTTP_OTA_PATH         F("/esp8266-ota/update") // Path to update firmware
+#define HTTP_OTA_PORT         1880                     // Port of update server
+                                                       // Name of firmware
+#define HTTP_OTA_VERSION      String(__FILE__).substring(String(__FILE__).lastIndexOf('\\')+1) + ".nodemcu" 
+
 
 // Parámetros de la conexión
 const char* ssid = "infind";
@@ -74,7 +84,24 @@ void callback(char* topic, byte* payload, unsigned int length) {
 void setup() {
   Serial.begin(115200);
   
+  pinMode(2, OUTPUT);     // Initialize the LED_BUILTIN pin as an output
+  digitalWrite(2, LOW);   // LED on
+  Serial.println("Booting");
+  
   setup_wifi();
+  Serial.println( "Preparing to update." );
+  
+  switch(ESPhttpUpdate.update(HTTP_OTA_ADDRESS, HTTP_OTA_PORT, HTTP_OTA_PATH, HTTP_OTA_VERSION)) {
+  case HTTP_UPDATE_FAILED:
+    Serial.printf("HTTP update failed: Error (%d): %s\n", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
+    break;
+  case HTTP_UPDATE_NO_UPDATES:
+    Serial.println(F("No updates"));
+    break;
+  case HTTP_UPDATE_OK:
+    Serial.println(F("Update OK"));
+    break;
+  }
   
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
@@ -96,7 +123,13 @@ void loop() {
       nowTime = millis();
       client.loop();
     }
-  
+    digitalWrite(2, LOW);   // Turn the LED on (Note that LOW is the voltage level
+    // but actually the LED is on; this is because
+    // it is active low on the ESP-01)
+    delay(1000);                      // Wait for a second
+    digitalWrite(2, HIGH);  // Turn the LED off by making the voltage HIGH
+    delay(2000);                      // Wait for two seconds (to demonstrate the active low LED)
+    
     ESP.deepSleep(3000000);
   }
 }
