@@ -1,18 +1,31 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
+#include "DHTesp.h"
+#include <ESP8266httpUpdate.h>
 
-// Parámetros de la conexión
+#define HTTP_OTA_ADDRESS      F("172.16.53.132")       //TODO arrange this as configurable info //Address of OTA update server
+#define HTTP_OTA_PATH         F("/esp8266-ota/update") // Path to update firmware
+#define HTTP_OTA_PORT         1880                     // Port of update server
+                                                       // Name of firmware
+#define HTTP_OTA_VERSION      String(__FILE__).substring(String(__FILE__).lastIndexOf('\\')+1) + ".nodemcu" 
+
+// General parameters
 const char* ssid = "infind";
 const char* password = "1518wifi";
 const char* mqtt_server = "172.16.53.131";
+
+// General objects
 WiFiClient espClient;
 PubSubClient client(espClient);
+DHTesp dht;
 
-// Parámetros generales
+// General variables
+bool deep_sleep = false;
 long nowTime, lastTime = 0;
 int time_DeepSleep;
 
 void setup_wifi() {
+  delay(10);
   Serial.println();
   Serial.print("Connecting to ");
   Serial.print(ssid);
@@ -33,10 +46,9 @@ void setup_wifi() {
 }
 
 void reconnect() {
-  // Loop until we're reconnected
   while (!client.connected()) {
     Serial.print("Attempting MQTT connection...");
-    
+
     // Create a random client ID
     String clientId = "ESP8266Client-";
     clientId += String(random(0xffff), HEX);
@@ -84,14 +96,34 @@ void callback(char* topic, byte* payload, unsigned int length) {
 
 void setup() {
   Serial.begin(115200);
+
+  Serial.println("Booting");
   
   setup_wifi();
+  Serial.println( "Preparing to update." );
+  
+  switch(ESPhttpUpdate.update(HTTP_OTA_ADDRESS, HTTP_OTA_PORT, HTTP_OTA_PATH, HTTP_OTA_VERSION)) {
+  case HTTP_UPDATE_FAILED:
+    Serial.printf("HTTP update failed: Error (%d): %s\n", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
+    break;
+  case HTTP_UPDATE_NO_UPDATES:
+    Serial.println(F("No updates"));
+    break;
+  case HTTP_UPDATE_OK:
+    Serial.println(F("Update OK"));
+    break;
+  }
   
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
+
+  dht.setup(5, DHTesp::DHT11);
 }
 
 void loop() {
+  if (!deep_sleep) {
+    deep_sleep = true;
+
     if (!client.connected()) {
       reconnect();
     }
@@ -104,6 +136,9 @@ void loop() {
       nowTime = millis();
       client.loop();
     }
+
     ESP.deepSleep(time_DeepSleep);
 
+  }
+  delay(100);
 }
