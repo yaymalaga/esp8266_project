@@ -15,7 +15,8 @@
 const char* ssid = "infind";
 const char* password = "1518wifi";
 const char* mqtt_server = "172.16.53.131";
-String CHIP_ID = "BEST_Arduino";
+String CHIP_ID = "BEST_Arduino"; //TODO: Get real chipID
+
 // Struct types
 typedef struct {
   long uptime;
@@ -74,7 +75,6 @@ PubSubClient client(espClient);
 
 //Sensor objects
 DHTesp dht;
-String json = "";
 
 // General variables
 float deep_sleep_time = 10;
@@ -109,7 +109,7 @@ void setup_wifi() {
 }
 
 //Declare serialize functions
-String device_serialize_JSON(t_Device data)
+String device_serialize_JSON(t_Device &data)
 {
   JSONVar jsonRoot;
   JSONVar device;
@@ -135,7 +135,7 @@ String device_serialize_JSON(t_Device data)
 }
 
 
-String sensor_serialize_JSON(t_Sensor data)
+String sensor_serialize_JSON(t_Sensor &data)
 {
   JSONVar jsonRoot;
   JSONVar sensors;
