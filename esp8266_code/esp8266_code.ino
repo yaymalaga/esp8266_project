@@ -31,9 +31,15 @@ void setup_wifi() {
 
   WiFi.begin(ssid, password);
 
-  while (WiFi.status() != WL_CONNECTED) {
+  int timeout = 0; // TODO: Check if 5s is enough
+  while (WiFi.status() != WL_CONNECTED && timeout < 5000) {
+    timeout += 500;
     delay(500);
     Serial.print(".");
+  }
+
+  if (timeout == 5000) {
+    do_deep_sleep();
   }
 
   randomSeed(micros());
@@ -44,8 +50,16 @@ void setup_wifi() {
   Serial.println(WiFi.localIP());
 }
 
+void do_deep_sleep() {
+  int deep_sleep_time = 3;
+  ESP.deepSleep(deep_sleep_time*1000000);
+}
+
 void reconnect() {
-  while (!client.connected()) {
+  int tries = 0;
+  while (!client.connected() && tries < 3) {
+    tries += 1;
+    
     Serial.print("Attempting MQTT connection...");
 
     // Create a random client ID
@@ -67,6 +81,10 @@ void reconnect() {
       // Wait 5 seconds before retrying
       delay(5000);
     }
+  }
+
+  if (tries == 3) {
+    do_deep_sleep();
   }
 }
 
@@ -125,8 +143,7 @@ void loop() {
       client.loop();
     }
 
-    int deep_sleep_time = 3; // TODO: Read from json
-    ESP.deepSleep(deep_sleep_time*1000000);
+    do_deep_sleep();
   }
   delay(100);
 }
