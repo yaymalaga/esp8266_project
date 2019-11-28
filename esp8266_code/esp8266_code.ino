@@ -127,7 +127,7 @@ String device_serialize_JSON(t_Device &body)
   
   device["WifiModule"]["conf"]["ssid"] = body.WifiModule.conf.ssid;
   device["WifiModule"]["conf"]["password"] = body.WifiModule.conf.password;
-  device["WifiModule"]["conf"]["mqqt_server"] = body.WifiModule.conf.mqtt_server;
+  device["WifiModule"]["conf"]["mqtt_server"] = body.WifiModule.conf.mqtt_server;
   
   jsonRoot["body"]= device;
   
