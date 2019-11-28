@@ -24,11 +24,7 @@ The following dependencies need to be manually in 'Tools' => 'Manage libraries':
 
 - Arduino_JSON
 
-### External dependencies
-
-- Time
-
-Download the library from github, https://github.com/PaulStoffregen/Time/archive/master.zip, and go to 'Sketch' => 'Include Library' => 'Add .zip library' to install it
+- NTPClient (Fabrice Weinberg)
 
 ### PubSubClient config
 

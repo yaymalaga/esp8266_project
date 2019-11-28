@@ -3,6 +3,7 @@
 #include "DHTesp.h"
 #include <ESP8266httpUpdate.h>
 #include <Arduino_JSON.h>
+#include <NTPClient.h>
 
 //Define macros
 #define HTTP_OTA_ADDRESS      F("172.16.53.132")       //TODO arrange this as configurable info //Address of OTA update server
@@ -15,6 +16,7 @@
 const char* ssid = "infind";
 const char* password = "1518wifi";
 const char* mqtt_server = "172.16.53.131";
+const long utcOffsetInSeconds = 3600;
 String CHIP_ID = "BEST_Arduino"; //TODO: Get real chipID
 
 // Struct types
@@ -75,6 +77,8 @@ PubSubClient client(espClient);
 
 //Sensor objects
 DHTesp dht;
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "cronos.uma.es", utcOffsetInSeconds);
 
 // General variables
 float deep_sleep_time = 10;
@@ -264,6 +268,8 @@ void setup() {
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
 
+  timeClient.begin();
+  
   dht.setup(5, DHTesp::DHT11);
 }
 
@@ -277,6 +283,9 @@ void loop() {
       reconnect();
     }
     client.loop();
+
+    timeClient.update();
+    Serial.println(timeClient.getFormattedTime());
 
     //Declare variables to hold the data values
     t_Device Device;
@@ -308,7 +317,7 @@ void loop() {
     client.publish(topic.c_str(), json.c_str());
     Serial.print("Publish message: ");
     Serial.println(json.c_str());
-    
+
     //Deep-sleep for 3s. Small wait just in case
     lastTime = millis();
     nowTime = lastTime;
