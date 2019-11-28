@@ -212,7 +212,7 @@ void reconnect() {
     if (client.connect(clientId.c_str(),"","","GRUPOG/tele/LWT",0,1,"GrupoG Offline")) {
       Serial.println("connected");
       // Once connected, publish an retained announcement
-      client.publish("GRUPOG/tele/LWT", "GrupoG Online", true);
+      client.publish("GRUPOG/BEST_Arduino/status", "GrupoG Online", true);
       // ... and resubscribe
       client.subscribe("GRUPOG/cmnd/power");
     } else {
