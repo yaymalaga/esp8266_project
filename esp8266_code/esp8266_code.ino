@@ -109,44 +109,44 @@ void setup_wifi() {
 }
 
 //Declare serialize functions
-String device_serialize_JSON(t_Device &data)
+String device_serialize_JSON(t_Device &body)
 {
   JSONVar jsonRoot;
   JSONVar device;
   String jsonString;
   
-  device["Board"]["data"]["uptime"] = data.Board.data.uptime;
-  device["Board"]["data"]["chip_id"] = data.Board.data.chip_id;
+  device["Board"]["data"]["uptime"] = body.Board.data.uptime;
+  device["Board"]["data"]["chip_id"] = body.Board.data.chip_id;
   
-  device["Board"]["conf"]["deep_sleep_time"] = data.Board.conf.deep_sleep_time;
+  device["Board"]["conf"]["deep_sleep_time"] = body.Board.conf.deep_sleep_time;
   
-  device["WifiModule"]["data"]["ap"] = data.WifiModule.data.ap;
-  device["WifiModule"]["data"]["bssid"] = data.WifiModule.data.bssid;
-  device["WifiModule"]["data"]["ip"] = data.WifiModule.data.ip;
-  device["WifiModule"]["data"]["rssi"] = data.WifiModule.data.rssi;
+  device["WifiModule"]["data"]["ap"] = body.WifiModule.data.ap;
+  device["WifiModule"]["data"]["bssid"] = body.WifiModule.data.bssid;
+  device["WifiModule"]["data"]["ip"] = body.WifiModule.data.ip;
+  device["WifiModule"]["data"]["rssi"] = body.WifiModule.data.rssi;
   
-  device["WifiModule"]["conf"]["ssid"] = data.WifiModule.conf.ssid;
-  device["WifiModule"]["conf"]["password"] = data.WifiModule.conf.password;
-  device["WifiModule"]["conf"]["mqqt_server"] = data.WifiModule.conf.mqtt_server;
+  device["WifiModule"]["conf"]["ssid"] = body.WifiModule.conf.ssid;
+  device["WifiModule"]["conf"]["password"] = body.WifiModule.conf.password;
+  device["WifiModule"]["conf"]["mqqt_server"] = body.WifiModule.conf.mqtt_server;
   
-  jsonRoot["data"]= device;
+  jsonRoot["body"]= device;
   
   return JSON.stringify(jsonRoot);
 }
 
 
-String sensor_serialize_JSON(t_Sensor &data)
+String sensor_serialize_JSON(t_Sensor &body)
 {
   JSONVar jsonRoot;
   JSONVar sensors;
   String jsonString;
 
-  sensors["DH11"]["temperature"] = data.DH11.temperature;
-  sensors["DH11"]["humidity"] = data.DH11.humidity;
+  sensors["DH11"]["temperature"] = body.DH11.temperature;
+  sensors["DH11"]["humidity"] = body.DH11.humidity;
   
-  sensors["LightSensor"]["light"]= data.LightSensor.light;
+  sensors["LightSensor"]["light"]= body.LightSensor.light;
 
-  jsonRoot["data"]= sensors;
+  jsonRoot["body"]= sensors;
   
   return JSON.stringify(jsonRoot);
 }
