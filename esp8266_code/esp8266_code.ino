@@ -4,6 +4,7 @@
 #include <ESP8266httpUpdate.h>
 #include <Arduino_JSON.h>
 #include <NTPClient.h>
+#include "time.h"
 
 //Define macros
 #define HTTP_OTA_ADDRESS      F("172.16.53.132")       //TODO arrange this as configurable info //Address of OTA update server
@@ -16,7 +17,9 @@
 const char* ssid = "infind";
 const char* password = "1518wifi";
 const char* mqtt_server = "172.16.53.131";
+const char* ntpServer = "cronos.uma.es";
 const long utcOffsetInSeconds = 3600;
+const int  daylightOffsetInSeconds = 3600;
 String CHIP_ID = "BEST_Arduino"; //TODO: Get real chipID
 
 // Struct types
@@ -77,8 +80,8 @@ PubSubClient client(espClient);
 
 //Sensor objects
 DHTesp dht;
-WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, "cronos.uma.es", utcOffsetInSeconds);
+//WiFiUDP ntpUDP;
+//NTPClient timeClient(ntpUDP, "cronos.uma.es", utcOffsetInSeconds);
 
 // General variables
 float deep_sleep_time = 10;
@@ -268,7 +271,27 @@ void setup() {
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
 
-  timeClient.begin();
+  configTime(utcOffsetInSeconds, daylightOffsetInSeconds, ntpServer);
+  time_t t_now;
+  struct tm * timeinfo;
+  //tm_sec  int seconds after the minute  0-60*
+  //tm_min  int minutes after the hour  0-59
+  //tm_hour int hours since midnight  0-23
+  //tm_mday int day of the month  1-31
+  //tm_mon  int months since January  0-11
+  //tm_year int years since 1900  
+  //tm_wday int days since Sunday 0-6
+  //tm_yday int days since January 1  0-365
+  //tm_isdst  int Daylight Saving Time flag 
+  while (!t_now) {
+    time(&t_now);
+    if (t_now) {
+      timeinfo = localtime(&t_now);
+      Serial.println(timeinfo->tm_mday);
+    } else {
+      Serial.println("Failed to obtain time");
+    }
+  }
   
   dht.setup(5, DHTesp::DHT11);
 }
