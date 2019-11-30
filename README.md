@@ -16,28 +16,10 @@ http://arduino.esp8266.com/stable/package_esp8266com_index.json
 
 ### Dependencies
 
-The following dependencies need to be manually in 'Tools' => 'Manage libraries':
+The following dependencies need to be manually installed in 'Tools' => 'Manage libraries':
 
 - DHT sensor library for ESPx
 
-- PubSubClient
+- MQTT (Joel Gaehwiler)
 
 - Arduino_JSON
-
-- NTPClient (Fabrice Weinberg)
-
-### PubSubClient config
-
-The library has a packet size limit that we need to modify in order to be able to work with it.
-
-Once installed, the library file should appear in the Arduino folder created by Arduino IDE in your computer:
-
-```
-\Arduino\libraries\PubSubClient\src\PubSubClient.h
-```
-
-The line we need to change is the following one, where '128' must be changed to at least '1024':
-
-```
-#define MQTT_MAX_PACKET_SIZE 128
-```
