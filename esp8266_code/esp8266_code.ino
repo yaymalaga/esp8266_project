@@ -307,9 +307,6 @@ void loop() {
   client.loop();
   delay(10); // Advised for stability
 
-  timeClient.update();
-  Serial.println(timeClient.getFormattedTime());
-
   //Declare variables to hold the data values
   t_Device Device;
   t_Sensor Sensor;
