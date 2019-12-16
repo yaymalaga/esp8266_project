@@ -5,6 +5,10 @@
 #include <Arduino_JSON.h>
 #include <NTPClient.h>
 #include "time.h"
+#include <Wire.h>
+#include <Adafruit_ADS1015.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
 
 //Define macros
 #define HTTP_OTA_ADDRESS      F("172.16.53.132")       //TODO arrange this as configurable info //Address of OTA update server
@@ -12,6 +16,12 @@
 #define HTTP_OTA_PORT         1880                     // Port of update server
                                                        // Name of firmware
 #define HTTP_OTA_VERSION      String(__FILE__).substring(String(__FILE__).lastIndexOf('\\')+1) + ".nodemcu"
+
+Adafruit_ADS1015 ads1015; // Construct an ads1015 at the default address: 0x48 (GROUND)
+
+#define ONE_WIRE_BUS 2 // Data wire is plugged into digital pin 2 on the Arduino
+OneWire oneWire(ONE_WIRE_BUS); // Setup a oneWire instance to communicate with any OneWire device
+DallasTemperature sensors(&oneWire); // Pass oneWire reference to DallasTemperature library
 
 // Connection parameters
 const char* ssid = "infind";
@@ -70,9 +80,24 @@ typedef struct {
 } t_DH11Data;
 
 typedef struct {
+  float ground_temperature;
+} t_ds18b20Data;
+
+typedef struct {
+  float ground_humidity;
+} t_hl69Data;
+
+typedef struct {
   t_DH11Data DH11;
   t_LightmeterData LightSensor;
+  t_ds18b20Data DS18B20;
+  t_hl69Data HL_69;
 } t_Sensor;
+
+
+
+
+
 
 // General objects
 WiFiClient espClient;
@@ -150,6 +175,9 @@ String sensor_serialize_JSON(t_Sensor &body)
   
   sensors["LightSensor"]["light"]= body.LightSensor.light;
 
+  sensors["HL_69"]["ground_humidity"]= body.HL_69.ground_humidity;
+  sensors["DS18B20"]["ground_temperature"]= body.DS18B20.ground_temperature;
+
   jsonRoot["body"]= sensors;
   
   return JSON.stringify(jsonRoot);
@@ -183,7 +211,6 @@ t_Device get_device_data(){
 
 t_Sensor get_sensor_data(){
   //Gets the information from the sensors and returns a struct with this data.
-  
   t_Sensor Sensor;
 
   //Get DH11 data
@@ -191,8 +218,17 @@ t_Sensor get_sensor_data(){
   Sensor.DH11.humidity = dht.getHumidity();
 
   //Get LightSensor data
-  Sensor.LightSensor.light = analogRead(A0);
+    Sensor.LightSensor.light = analogRead(A0);
 
+  //Get HL-69 data
+  int16_t hl_69;
+  hl_69 = ads1015.readADC_SingleEnded(0);
+  Sensor.HL_69.ground_humidity = map(hl_69,0,1646,0,100);
+
+  //Get DS18B20 data
+  sensors.requestTemperatures();
+  Sensor.DS18B20.ground_temperature = sensors.getTempCByIndex(0);
+  
   return Sensor;
 }
 
