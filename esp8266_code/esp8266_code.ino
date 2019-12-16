@@ -334,6 +334,11 @@ void setup() {
   check_date_time();
   
   dht.setup(5, DHTesp::DHT11);
+  
+  ads1015.begin();
+  ads1015.setGain(GAIN_ONE); // 1x gain   +/- 4.096V  1 bit = 2mV 
+  
+  sensors.begin();
 }
 
 void loop() {
