@@ -5,6 +5,9 @@
 #include <Arduino_JSON.h>
 #include "Wire.h"
 #include "uRTCLib.h"
+#include <DNSServer.h>            //Local DNS Server used for redirecting all requests to the configuration portal
+#include <ESP8266WebServer.h>     //Local WebServer used to serve the configuration portal
+#include <WiFiManager.h>
 
 //Define macros
 #define HTTP_OTA_ADDRESS      F("172.16.53.132")       //TODO arrange this as configurable info //Address of OTA update server
@@ -19,6 +22,7 @@ const char* password = "1518wifi";
 const char* mqtt_server = "172.16.53.131";
 
 // General objects
+WiFiManager wifiManager;
 WiFiClient espClient;
 MQTTClient client(1024);
 DHTesp dht;
@@ -158,30 +162,24 @@ t_Sensor get_sensor_data(){
   return Sensor;
 }
 
-void setup_wifi() {
-  delay(10);
-  Serial.print("\nConnecting to ");
-  Serial.print(ssid);
+void setup_wifi() {  
+  wifiManager.setConnectTimeout(10); // 10s timeout to connect to wifi
+  wifiManager.setConfigPortalTimeout(300); // 5min timeout to configure wifi access
 
-  WiFi.begin(ssid, password);
-
-  int timeout = 0;
-  while (WiFi.status() != WL_CONNECTED && timeout < 10000) {
-    timeout += 500;
-    delay(500);
-    Serial.print(".");
-  }
-
-  if (timeout == 10000) {
-    Serial.println("\nWifi connection timeout");
+  if(!wifiManager.autoConnect()) {
+    Serial.println("Wifi configuration or connection timeout");
     do_deep_sleep();
   }
 
-  randomSeed(micros());
+  ssid = WiFi.SSID().c_str();
+  password = WiFi.psk().c_str();
 
-  Serial.println("");
   Serial.println("WiFi connected");
-  Serial.println("IP address: ");
+  Serial.print("SSID: ");
+  Serial.println(ssid);
+  Serial.print("Password: ");
+  Serial.println(password);
+  Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 }
 
@@ -352,7 +350,13 @@ void setup() {
 
   Serial.println("Booting");
 
-  CHIP_ID = (String)ESP.getFlashChipId();
+  // Check on booting the settings reset button
+  pinMode(0, INPUT_PULLUP);
+  if (digitalRead(0) == LOW) {
+      wifiManager.resetSettings();
+    }
+
+  CHIP_ID = (String) ESP.getFlashChipId();
   
   setup_wifi();
 
@@ -386,7 +390,7 @@ void loop() {
   Serial.print("Publish message: ");
   Serial.println(json.c_str());
 
-  // Wait at least 10 seconds for the mqtt ack check
+  // Wait at least 15s for mqtt qos
   unsigned long lastMillis = millis();
   while (millis() - lastMillis > 15000) {
     client.loop();

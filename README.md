@@ -27,3 +27,5 @@ The following dependencies need to be manually installed in 'Tools' => 'Manage l
 - ESP8266httpUpdate
 
 - uRTCLib
+
+- WiFiManager
