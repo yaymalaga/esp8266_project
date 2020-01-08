@@ -22,11 +22,7 @@
                                                        // Name of firmware
 #define HTTP_OTA_VERSION      String(__FILE__).substring(String(__FILE__).lastIndexOf('\\')+1) + ".nodemcu"
 
-Adafruit_ADS1015 ads1015; // Construct an ads1015 at the default address: 0x48 (GROUND)
-
 #define ONE_WIRE_BUS 2 // Data wire is plugged into digital pin 2 on the Arduino
-OneWire oneWire(ONE_WIRE_BUS); // Setup a oneWire instance to communicate with any OneWire device
-DallasTemperature sensors(&oneWire); // Pass oneWire reference to DallasTemperature library
 
 // Connection parameters
 const char* ssid = "infind";
@@ -39,16 +35,18 @@ WiFiClient espClient;
 MQTTClient client(1024);
 DHTesp dht;
 uRTCLib rtc(0x68);
+Adafruit_ADS1015 ads1015; // Construct an ads1015 at the default address: 0x48 (GROUND)
+OneWire oneWire(ONE_WIRE_BUS); // Setup a oneWire instance to communicate with any OneWire device
+DallasTemperature sensors(&oneWire); // Pass oneWire reference to DallasTemperature library
 
 // General variables
 float deep_sleep_time = 10;
 const int utcOffsetInSeconds = 0;
 const int  daylightOffsetInSeconds = 3600;
 const char* ntpServer = "cronos.uma.es";
-String CHIP_ID = "BEST_Arduino"; //TODO: Get real chipID
+String CHIP_ID = "";
 
 // Struct types
-
 typedef struct {
   int   reboot_counter;
 } t_EEPROM;
@@ -113,17 +111,6 @@ typedef struct {
   t_ds18b20Data DS18B20;
   t_hl69Data HL_69;
 } t_Sensor;
-
-// General objects
-WiFiClient espClient;
-MQTTClient client(1024);
-DHTesp dht;
-struct tm * timeinfo;
-
-// General variables
-float deep_sleep_time = 10;
-bool deep_sleep = false;
-long nowTime, lastTime = 0;
 
 //Declare serialize functions
 String data_serialize_JSON(t_Sensor &sensor_data, t_Device &device_data) {
