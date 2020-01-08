@@ -2,6 +2,7 @@
 #include <MQTT.h>
 #include "DHTesp.h"
 #include <ESP8266httpUpdate.h>
+#include <ESP_EEPROM.h>
 #include <Arduino_JSON.h>
 #include "Wire.h"
 #include "uRTCLib.h"
@@ -36,6 +37,11 @@ const char* ntpServer = "cronos.uma.es";
 String CHIP_ID = "BEST_Arduino"; //TODO: Get real chipID
 
 // Struct types
+
+typedef struct {
+  int   reboot_counter;
+} t_EEPROM;
+
 typedef struct {
   String timestamp;
   String chip_id;
@@ -272,6 +278,32 @@ void check_fota() {
   }
 }
 
+void check_EEPROM() {
+  t_EEPROM EEPROM_data;
+  bool check_fota = false;
+  int counter = 0;
+  
+  EEPROM.begin(8); // Use just 8 bytes
+  if (EEPROM.percentUsed() > 0) {
+    EEPROM.get(0, EEPROM_data);
+    if (EEPROM_data.reboot_counter == 5) {
+      check_fota = true;
+    } else {
+      counter = EEPROM_data.reboot_counter + 1;
+      EEPROM.put(0, EEPROM_data);
+      EEPROM.commit();
+    }
+  }
+  
+  EEPROM_data.reboot_counter = counter;
+  EEPROM.put(0, EEPROM_data);
+  EEPROM.commit(); 
+  
+  if (check_fota) {
+    check_fota();
+  }
+}
+
 String getTimeStamp() {
   delay(10);
   rtc.refresh();
@@ -359,8 +391,8 @@ void setup() {
   CHIP_ID = (String) ESP.getFlashChipId();
   
   setup_wifi();
-
-  check_fota();
+  
+  check_EEPROM();
 
   check_date_time();
   
