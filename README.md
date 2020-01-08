@@ -33,3 +33,5 @@ The following dependencies need to be manually installed in 'Tools' => 'Manage l
 - OneWire
 
 - DallasTemperature
+
+- ESP_EEPROM
