@@ -9,6 +9,9 @@
 #include <DNSServer.h>            //Local DNS Server used for redirecting all requests to the configuration portal
 #include <ESP8266WebServer.h>     //Local WebServer used to serve the configuration portal
 #include <WiFiManager.h>
+#include <Adafruit_ADS1015.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
 
 //Define macros
 #define HTTP_OTA_ADDRESS      F("172.16.53.132")       //TODO arrange this as configurable info //Address of OTA update server
@@ -16,6 +19,12 @@
 #define HTTP_OTA_PORT         1880                     // Port of update server
                                                        // Name of firmware
 #define HTTP_OTA_VERSION      String(__FILE__).substring(String(__FILE__).lastIndexOf('\\')+1) + ".nodemcu"
+
+Adafruit_ADS1015 ads1015; // Construct an ads1015 at the default address: 0x48 (GROUND)
+
+#define ONE_WIRE_BUS 3 // Data wire is plugged into digital pin 3 on the Arduino
+OneWire oneWire(ONE_WIRE_BUS); // Setup a oneWire instance to communicate with any OneWire device
+DallasTemperature sensors(&oneWire); // Pass oneWire reference to DallasTemperature library
 
 // Connection parameters
 const char* ssid = "infind";
@@ -82,16 +91,35 @@ typedef struct {
 
 typedef struct {
   int light;
+  String state;
 } t_LightmeterData;
 
 typedef struct {
   float temperature;
   float humidity;
+  String state;
 } t_DH11Data;
+
+typedef struct {
+  float ground_temperature;
+  String state;
+} t_ds18b20Data;
+
+typedef struct {
+  float ground_humidity;
+  String state;
+} t_hl69Data;
+
+typedef struct {
+  int code;
+}t_error;
 
 typedef struct {
   t_DH11Data DH11;
   t_LightmeterData LightSensor;
+  t_ds18b20Data DS18B20;
+  t_hl69Data HL_69;
+  t_error Error_Code;
 } t_Sensor;
 
 //Declare serialize functions
@@ -104,8 +132,18 @@ String data_serialize_JSON(t_Sensor &sensor_data, t_Device &device_data) {
   // Set sensors data as body
   sensors["DH11"]["temperature"] = sensor_data.DH11.temperature;
   sensors["DH11"]["humidity"] = sensor_data.DH11.humidity;
+  sensors["DH11"]["state"] = sensor_data.DH11.state;
   
   sensors["LightSensor"]["light"]= sensor_data.LightSensor.light;
+  sensors["LightSensor"]["state"] = sensor_data.LightSensor.state;
+
+  sensors["HL_69"]["ground_humidity"]= sensor_data.HL_69.ground_humidity;
+  sensors["HL_69"]["state"]= sensor_data.HL_69.state;
+  
+  sensors["HL_69"]["ground_humidity"]= sensor_data.DS18B20.ground_temperature;
+  sensors["HL_69"]["state"]= sensor_data.DS18B20.state;
+
+  sensors["Error_Code"] = sensor_data.Error_Code.code;
 
   jsonRoot["body"] = sensors;
   
@@ -165,6 +203,20 @@ t_Sensor get_sensor_data(){
 
   //Get LightSensor data
   Sensor.LightSensor.light = analogRead(A0);
+  Sensor.LightSensor.light = map(Sensor.LightSensor.light,0,1023,0,1850);//Max value of the light sensor: 1850 W/m2
+  
+   //Get HL-69 data
+  int16_t hl_69;
+  hl_69 = ads1015.readADC_SingleEnded(0);
+  //Max value given by ads1015: 1646. Max value of ground_humidity: 100%
+  Sensor.HL_69.ground_humidity = map(hl_69,0,1646,0,100);
+
+  //Get DS18B20 data
+  sensors.requestTemperatures();
+  Sensor.DS18B20.ground_temperature = sensors.getTempCByIndex(0);
+  
+  // Error Control
+  Sensor = Error_Control(Sensor);
 
   return Sensor;
 }
@@ -346,6 +398,77 @@ String getTimeStamp() {
 
   return timestamp;
 }
+
+t_Sensor Error_Control(t_Sensor S){
+  int num_errors = 0;
+  //State of DH11 sensor
+  if ((S.DH11.temperature > 0 & S.DH11.temperature <= 50)& (S.DH11.humidity >= 20 & S.DH11.humidity <= 90)){
+    S.DH11.state = "Active";
+  }
+  else {
+    // TODO: Comprobar si cuando están desactivados dan un valor 0
+    if (S.DH11.temperature == 0 & S.DH11.humidity == 0){
+    S.DH11.state = "Disconnected";
+    }
+    else {
+      S.DH11.state = "Not calibrated";
+    }
+    S.DH11.temperature = -999;
+    S.DH11.humidity = -999;
+    num_errors = num_errors + 1;
+  }
+
+  //State of Light sensor
+  if(S.LightSensor.light > 0 & S.LightSensor.light <= 1850){
+    S.LightSensor.state = "Active";
+  }
+  else {
+    // TODO: Comprobar si cuando están desactivados dan un valor 0
+    if (S.LightSensor.light == 0){
+      S.LightSensor.state = "Disconnected";
+    }
+    else {
+      S.LightSensor.state = "Not calibrated";
+    }
+    S.LightSensor.light = -999;
+    num_errors = num_errors + 1;
+  }
+  
+  //State of HL_69 sensor
+  //TODO: comprobar el valor exacto que marca cuando está desactivado (creo que estaba en torno a 300)
+  if (S.HL_69.ground_humidity >= 300 & S.HL_69.ground_humidity <= 1646){
+        S.HL_69.state = "Active";
+  }
+  else {
+    S.HL_69.state = "Disconnected or not calibrated";
+    S.HL_69.ground_humidity = -999;
+    num_errors = num_errors + 1;
+  }
+
+  //State of DS18B20 sensor
+  if (S.DS18B20.ground_temperature >= -55 & S.DS18B20.ground_temperature <= 125){
+    S.DS18B20.state = "Active";
+  }
+  else {
+    if (S.DS18B20.ground_temperature <= -125){
+      S.DS18B20.state = "Disconnected";
+    }
+    else {
+      S.DS18B20.state = "Not calibrated";
+    }
+    S.DS18B20.ground_temperature = -999;
+    num_errors = num_errors + 1;
+  }
+  
+    if (num_errors == 0){
+    S.Error_Code.code = 0;
+  } else {
+    S.Error_Code.code = -1;
+  }
+  
+  return S;
+}
+
 
 void check_date_time() {
   // Reset time register
