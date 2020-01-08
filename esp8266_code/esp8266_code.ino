@@ -25,12 +25,9 @@ String CHIP_ID = "BEST_Arduino"; //TODO: Get real chipID
 
 // Struct types
 
-struct MyEEPROMStruct {
- 
+typedef struct {
   int   reinicios;
-  byte    someBytes[20];
-  boolean state;
-} eepromVar1;
+} t_EEPROM;
 
 typedef struct {
   long uptime;
@@ -268,6 +265,32 @@ void check_fota() {
   }
 }
 
+void check_EEPROM() {
+  t_EEPROM EEPROM_data;
+  bool check_fota = false;
+  int counter = 0;
+  
+  EEPROM.begin(8); // Use just 8 bytes
+  if (EEPROM.percentUsed() > 0) {
+    EEPROM.get(0, EEPROM_data);
+    if (EEPROM_data.reinicios == 5) {
+      check_fota = true;
+    } else {
+      counter = EEPROM_data.reboots + 1;
+      EEPROM.put(0, EEPROM_data);
+      EEPROM.commit();
+    }
+  }
+  
+  EEPROM_data.reboots = counter;
+  EEPROM.put(0, EEPROM_data);
+  EEPROM.commit(); 
+  
+  if (check_fota) {
+    check_fota();
+  }
+}
+
 void check_date_time() {
   configTime(utcOffsetInSeconds, daylightOffsetInSeconds, ntpServer);
   time_t t_now;
@@ -299,70 +322,7 @@ void setup() {
   
   setup_wifi();
   
-  //Set up the initial (default) values for what is to be stored in EEPROM
-  eepromVar1.state = true;
-  eepromVar1.reinicios = 0;
-  
-  EEPROM.begin(sizeof(MyEEPROMStruct));   // The begin() call will find the data previously saved in EEPROM if the same size
-                                         // as was previously committed. If the size is different then the EEEPROM data is cleared.
-  
-   // Check if the EEPROM contains valid data from another run
-  // If so, overwrite the 'default' values set up in our struct
-  
-  if(EEPROM.percentUsed()>0) {
-    
-    EEPROM.get(0, eepromVar1);
-    Serial.println("EEPROM has data from a previous run.");
-    Serial.print(EEPROM.percentUsed());
-    Serial.println("% of ESP flash space currently used");
-    Serial.print("EEPROM data restored, Number of resets =");
-    Serial.println(eepromVar1.reinicios);
-  }
-
-  else {
-    Serial.println("EEPROM size changed - EEPROM data zeroed");    
-  }
-  
-  EEPROM.commit(); //write the data to EEPROM
-  
-  if(eepromVar1.reinicios==5){
-
-    // Get EEPROM data into our local copy only if we could commit it properly
-      EEPROM.get(0, eepromVar1);
-      Serial.print("EEPROM data read, Number of resets =");
-      Serial.println(eepromVar1.reinicios);
-
-      delay(10);
-      
-      // in case we need to restore our EEPROM, we execute ONLY lines 338-346
-      EEPROM.begin(EEPROM_MIN_SIZE); //reset memory size
-      
-      boolean result = EEPROM.wipe(); //cleans memory values
-      Serial.println(result); 
-      if (result) {
-        Serial.println("All EEPROM data wiped");
-      } else {
-        Serial.println("EEPROM data could not be wiped from flash store");
-      }
-      
-      check_fota();
-
-      delay(10);
-      
-}
-  
-  else{
-
-    Serial.print(F("Not update avaliable ")); //in case we didnt reach 5 resets
-    eepromVar1.reinicios = eepromVar1.reinicios+1;
-    delay(10);
-    EEPROM.put(0,eepromVar1);
-    EEPROM.commit();
-    delay(10);
-  }
- 
-}
- 
+  check_EEPROM();
 
   client.begin(mqtt_server, espClient);
   client.onMessage(callback);
