@@ -6,6 +6,9 @@
 #include <Arduino_JSON.h>
 #include "Wire.h"
 #include "uRTCLib.h"
+#include <DNSServer.h>            //Local DNS Server used for redirecting all requests to the configuration portal
+#include <ESP8266WebServer.h>     //Local WebServer used to serve the configuration portal
+#include <WiFiManager.h>
 
 //Define macros
 #define HTTP_OTA_ADDRESS      F("172.16.53.132")       //TODO arrange this as configurable info //Address of OTA update server
@@ -18,9 +21,9 @@
 const char* ssid = "infind";
 const char* password = "1518wifi";
 const char* mqtt_server = "172.16.53.131";
-const char* ntpServer = "cronos.uma.es";
 
 // General objects
+WiFiManager wifiManager;
 WiFiClient espClient;
 MQTTClient client(1024);
 DHTesp dht;
@@ -30,6 +33,7 @@ uRTCLib rtc(0x68);
 float deep_sleep_time = 10;
 const int utcOffsetInSeconds = 0;
 const int  daylightOffsetInSeconds = 3600;
+const char* ntpServer = "cronos.uma.es";
 String CHIP_ID = "BEST_Arduino"; //TODO: Get real chipID
 
 // Struct types
@@ -39,7 +43,7 @@ typedef struct {
 } t_EEPROM;
 
 typedef struct {
-  long uptime;
+  String timestamp;
   String chip_id;
 } t_ESP8266Data;
 
@@ -90,60 +94,47 @@ typedef struct {
 } t_Sensor;
 
 //Declare serialize functions
-String device_serialize_JSON(t_Device &body)
-{
+String data_serialize_JSON(t_Sensor &sensor_data, t_Device &device_data) {
   JSONVar jsonRoot;
   JSONVar device;
-  String jsonString;
-  
-  device["Board"]["data"]["uptime"] = body.Board.data.uptime;
-  device["Board"]["data"]["chip_id"] = body.Board.data.chip_id;
-  
-  device["Board"]["conf"]["deep_sleep_time"] = body.Board.conf.deep_sleep_time;
-  
-  device["WifiModule"]["data"]["ap"] = body.WifiModule.data.ap;
-  device["WifiModule"]["data"]["bssid"] = body.WifiModule.data.bssid;
-  device["WifiModule"]["data"]["ip"] = body.WifiModule.data.ip;
-  device["WifiModule"]["data"]["rssi"] = body.WifiModule.data.rssi;
-  
-  device["WifiModule"]["conf"]["ssid"] = body.WifiModule.conf.ssid;
-  device["WifiModule"]["conf"]["password"] = body.WifiModule.conf.password;
-  device["WifiModule"]["conf"]["mqtt_server"] = body.WifiModule.conf.mqtt_server;
-  
-  jsonRoot["body"]= device;
-
-  jsonRoot["header"] =  getTimeStamp();
-  
-  return JSON.stringify(jsonRoot);
-}
-
-
-String sensor_serialize_JSON(t_Sensor &body)
-{
-  JSONVar jsonRoot;
   JSONVar sensors;
   String jsonString;
 
-  sensors["DH11"]["temperature"] = body.DH11.temperature;
-  sensors["DH11"]["humidity"] = body.DH11.humidity;
+  // Set sensors data as body
+  sensors["DH11"]["temperature"] = sensor_data.DH11.temperature;
+  sensors["DH11"]["humidity"] = sensor_data.DH11.humidity;
   
-  sensors["LightSensor"]["light"]= body.LightSensor.light;
+  sensors["LightSensor"]["light"]= sensor_data.LightSensor.light;
 
   jsonRoot["body"] = sensors;
-
-  jsonRoot["header"] =  getTimeStamp(); 
+  
+  // Set device data as header
+  device["Board"]["data"]["timestamp"] = device_data.Board.data.timestamp;
+  device["Board"]["data"]["chip_id"] = device_data.Board.data.chip_id;
+  
+  device["Board"]["conf"]["deep_sleep_time"] = device_data.Board.conf.deep_sleep_time;
+  
+  device["WifiModule"]["data"]["ap"] = device_data.WifiModule.data.ap;
+  device["WifiModule"]["data"]["bssid"] = device_data.WifiModule.data.bssid;
+  device["WifiModule"]["data"]["ip"] = device_data.WifiModule.data.ip;
+  device["WifiModule"]["data"]["rssi"] = device_data.WifiModule.data.rssi;
+  
+  device["WifiModule"]["conf"]["ssid"] = device_data.WifiModule.conf.ssid;
+  device["WifiModule"]["conf"]["password"] = device_data.WifiModule.conf.password;
+  device["WifiModule"]["conf"]["mqtt_server"] = device_data.WifiModule.conf.mqtt_server;
+  
+  jsonRoot["header"] = device;
   
   return JSON.stringify(jsonRoot);
 }
 
-//Declare get data functions
-t_Device get_device_data(){
+t_Device get_device_data() {
   //Gets the information from the device and returns a struct with this data.
   
   t_Device Device;
   
   //Get Board data
-  Device.Board.data.uptime = millis();
+  Device.Board.data.timestamp = getTimeStamp();
   Device.Board.data.chip_id = CHIP_ID;
   
   //Get Board conf
@@ -177,35 +168,28 @@ t_Sensor get_sensor_data(){
   return Sensor;
 }
 
-void setup_wifi() {
-  delay(10);
-  Serial.print("\nConnecting to ");
-  Serial.print(ssid);
+void setup_wifi() {  
+  wifiManager.setConnectTimeout(10); // 10s timeout to connect to wifi
+  wifiManager.setConfigPortalTimeout(300); // 5min timeout to configure wifi access
 
-  WiFi.begin(ssid, password);
-
-  int timeout = 0;
-  while (WiFi.status() != WL_CONNECTED && timeout < 10000) {
-    timeout += 500;
-    delay(500);
-    Serial.print(".");
-  }
-
-  if (timeout == 10000) {
-    Serial.println("\nWifi connection timeout");
+  if(!wifiManager.autoConnect()) {
+    Serial.println("Wifi configuration or connection timeout");
     do_deep_sleep();
   }
 
-  randomSeed(micros());
+  ssid = WiFi.SSID().c_str();
+  password = WiFi.psk().c_str();
 
-  Serial.println("");
   Serial.println("WiFi connected");
-  Serial.println("IP address: ");
+  Serial.print("SSID: ");
+  Serial.println(ssid);
+  Serial.print("Password: ");
+  Serial.println(password);
+  Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 }
 
 void do_deep_sleep() {
-  delay(1000);
   Serial.println("Good night!");
   ESP.deepSleep(deep_sleep_time*1000000);
   delay(5000);
@@ -256,7 +240,8 @@ void callback(String &topic, String &payload) {
     deep_sleep_time = payload.toFloat();
     Serial.println("DeepSleep set to " + (String
     )deep_sleep_time + " minutes");
-  } else if (topic == "GRUPOG/" + CHIP_ID + "/date_time") {
+  } else if (topic == "GRUPOG/" + CHIP_ID + "/manual_date_time") {
+    // ISO8601 (2019-12-12T14:41:38+0000)
     rtc.set(
       payload.substring(17,19).toInt(),
       payload.substring(14,16).toInt(),
@@ -268,6 +253,12 @@ void callback(String &topic, String &payload) {
     );
     String timestamp = getTimeStamp();
     Serial.println("Time set to " + timestamp);
+  } else if (topic == "GRUPOG/" + CHIP_ID + "/check_date_time") {
+    check_date_time();
+  } else if (topic == "GRUPOG/" + CHIP_ID + "/ntp_date_time") {
+    ntpServer = payload.c_str();
+    check_date_time();
+    ntpServer = "cronos.uma.es";
   }
 }
 
@@ -317,7 +308,7 @@ String getTimeStamp() {
   delay(10);
   rtc.refresh();
 
-  String timestamp = ""; //iso8601 (2019-12-12T14:41:38+0000)
+  String timestamp = ""; // ISO8601 (2019-12-12T14:41:38+0000)
   timestamp.concat(rtc.year()+1900);
   timestamp.concat("-");
 
@@ -360,7 +351,7 @@ void check_date_time() {
   struct timeval tv={0,0};
   settimeofday(&tv, &tz);
 
-  configTime(utcOffsetInSeconds, daylightOffsetInSeconds, "cronos.uma.es");
+  configTime(utcOffsetInSeconds, daylightOffsetInSeconds, ntpServer);
 
   int timeout = 0;
   Serial.print("Waiting for time");
@@ -390,6 +381,14 @@ void setup() {
   Serial.begin(115200);
 
   Serial.println("Booting");
+
+  // Check on booting the settings reset button
+  pinMode(0, INPUT_PULLUP);
+  if (digitalRead(0) == LOW) {
+      wifiManager.resetSettings();
+    }
+
+  CHIP_ID = (String) ESP.getFlashChipId();
   
   setup_wifi();
   
@@ -411,27 +410,24 @@ void loop() {
   delay(10); // Advised for stability
   
   //Get device data values 
-  t_Device Device = get_device_data();
+  t_Device device_data = get_device_data();
   
-  //Serialize and publish device data
-  String json = device_serialize_JSON(Device);
+  //Get sensor data values
+  t_Sensor sensor_data = get_sensor_data();
+  
+  //Serialize and publish data
+  String json = data_serialize_JSON(sensor_data, device_data);
 
   client.publish(String("GRUPOG/" + CHIP_ID + "/device"), json, false, 1);
   Serial.print("Publish message: ");
   Serial.println(json.c_str());
-  
-  //Get sensor data values
-  t_Sensor Sensor = get_sensor_data();
 
-  //Serialize and publish sensor data
-  json = sensor_serialize_JSON(Sensor);
-  
-  client.publish(String("GRUPOG/" + CHIP_ID + "/sensor"), json, false, 1);
-  Serial.print("Publish message: ");
-  Serial.println(json.c_str());
-
-  client.loop();
-  delay(10); // Advised for stability
+  // Wait at least 15s for mqtt qos
+  unsigned long lastMillis = millis();
+  while (millis() - lastMillis > 15000) {
+    client.loop();
+    delay(500);
+  }
 
   do_deep_sleep();
 }
