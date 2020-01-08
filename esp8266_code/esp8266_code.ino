@@ -31,6 +31,7 @@ uRTCLib rtc(0x68);
 
 // General variables
 float deep_sleep_time = 10;
+int reboots_fota = 5;
 const int utcOffsetInSeconds = 0;
 const int  daylightOffsetInSeconds = 3600;
 const char* ntpServer = "cronos.uma.es";
@@ -234,12 +235,14 @@ void callback(String &topic, String &payload) {
   Serial.print("]: ");
   Serial.println(payload);
 
-  // TODO: Handle topic logic
   if (topic == "GRUPOG/" + CHIP_ID + "/deep_sleep") {
     // TODO: Revise in future and save to flash memory
     deep_sleep_time = payload.toFloat();
-    Serial.println("DeepSleep set to " + (String
-    )deep_sleep_time + " minutes");
+    Serial.println("DeepSleep set to " + (String)deep_sleep_time + " minutes");
+  } else if (topic == "GRUPOG/" + CHIP_ID + "/reboots_fota") {
+    // TODO: Revise in future and save to flash memory
+    reboots_fota = payload.toFloat();
+    Serial.println("FOTA is going to be checked every " + (String)reboots_fota + " reboots");
   } else if (topic == "GRUPOG/" + CHIP_ID + "/manual_date_time") {
     // ISO8601 (2019-12-12T14:41:38+0000)
     rtc.set(
@@ -287,7 +290,7 @@ void check_EEPROM() {
   if (EEPROM.percentUsed() > 0) {
     EEPROM.get(0, EEPROM_data);
     
-    if (EEPROM_data.reboot_counter == 5) {
+    if (EEPROM_data.reboot_counter == reboots_fota) {
       do_check_fota = true;
     } else {
       counter = EEPROM_data.reboot_counter + 1;
