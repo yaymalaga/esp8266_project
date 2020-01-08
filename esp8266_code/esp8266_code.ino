@@ -4,8 +4,8 @@
 #include <ESP8266httpUpdate.h>
 #include <ESP_EEPROM.h>
 #include <Arduino_JSON.h>
-#include <NTPClient.h>
-#include "time.h"
+#include "Wire.h"
+#include "uRTCLib.h"
 
 //Define macros
 #define HTTP_OTA_ADDRESS      F("172.16.53.132")       //TODO arrange this as configurable info //Address of OTA update server
@@ -19,7 +19,16 @@ const char* ssid = "infind";
 const char* password = "1518wifi";
 const char* mqtt_server = "172.16.53.131";
 const char* ntpServer = "cronos.uma.es";
-const long utcOffsetInSeconds = 3600;
+
+// General objects
+WiFiClient espClient;
+MQTTClient client(1024);
+DHTesp dht;
+uRTCLib rtc(0x68);
+
+// General variables
+float deep_sleep_time = 10;
+const int utcOffsetInSeconds = 0;
 const int  daylightOffsetInSeconds = 3600;
 String CHIP_ID = "BEST_Arduino"; //TODO: Get real chipID
 
@@ -80,44 +89,6 @@ typedef struct {
   t_LightmeterData LightSensor;
 } t_Sensor;
 
-// General objects
-WiFiClient espClient;
-MQTTClient client(1024);
-DHTesp dht;
-struct tm * timeinfo;
-
-// General variables
-float deep_sleep_time = 10;
-bool deep_sleep = false;
-long nowTime, lastTime = 0;
-
-void setup_wifi() {
-  delay(10);
-  Serial.println();
-  Serial.print("Connecting to ");
-  Serial.print(ssid);
-
-  WiFi.begin(ssid, password);
-
-  int timeout = 0; // TODO: Check if 5s is enough
-  while (WiFi.status() != WL_CONNECTED && timeout < 5000) {
-    timeout += 500;
-    delay(500);
-    Serial.print(".");
-  }
-
-  if (timeout == 5000) {
-    do_deep_sleep();
-  }
-
-  randomSeed(micros());
-
-  Serial.println("");
-  Serial.println("WiFi connected");
-  Serial.println("IP address: ");
-  Serial.println(WiFi.localIP());
-}
-
 //Declare serialize functions
 String device_serialize_JSON(t_Device &body)
 {
@@ -140,6 +111,8 @@ String device_serialize_JSON(t_Device &body)
   device["WifiModule"]["conf"]["mqtt_server"] = body.WifiModule.conf.mqtt_server;
   
   jsonRoot["body"]= device;
+
+  jsonRoot["header"] =  getTimeStamp();
   
   return JSON.stringify(jsonRoot);
 }
@@ -156,7 +129,9 @@ String sensor_serialize_JSON(t_Sensor &body)
   
   sensors["LightSensor"]["light"]= body.LightSensor.light;
 
-  jsonRoot["body"]= sensors;
+  jsonRoot["body"] = sensors;
+
+  jsonRoot["header"] =  getTimeStamp(); 
   
   return JSON.stringify(jsonRoot);
 }
@@ -202,7 +177,36 @@ t_Sensor get_sensor_data(){
   return Sensor;
 }
 
+void setup_wifi() {
+  delay(10);
+  Serial.print("\nConnecting to ");
+  Serial.print(ssid);
+
+  WiFi.begin(ssid, password);
+
+  int timeout = 0;
+  while (WiFi.status() != WL_CONNECTED && timeout < 10000) {
+    timeout += 500;
+    delay(500);
+    Serial.print(".");
+  }
+
+  if (timeout == 10000) {
+    Serial.println("\nWifi connection timeout");
+    do_deep_sleep();
+  }
+
+  randomSeed(micros());
+
+  Serial.println("");
+  Serial.println("WiFi connected");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+}
+
 void do_deep_sleep() {
+  delay(1000);
+  Serial.println("Good night!");
   ESP.deepSleep(deep_sleep_time*1000000);
   delay(5000);
 }
@@ -221,21 +225,21 @@ void reconnect() {
     // TODO: Change
     if (client.connect(clientId.c_str())) {
       Serial.println("connected");
-      client.setWill("GRUPOG/tele/LWT", "GrupoG Offline", true, 1);
-      client.publish("GRUPOG/tele/LWT", "GrupoG Online", true, 1);
-      client.subscribe("GRUPOG/cmnd/power", 1); 
+      client.setWill(String("GRUPOG/" + CHIP_ID + "/status").c_str(), "GrupoG Offline", true, 1);
+      client.publish("GRUPOG/" + CHIP_ID + "/status", "GrupoG Online", true, 1);
+      client.subscribe("GRUPOG/" + CHIP_ID + "/deep_sleep", 1);
       client.loop();
       delay(10); // Advised for stability
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.lastError());
-      Serial.println(" try again in 5 seconds");
-      // Wait 5 seconds before retrying
+      Serial.println(" trying again in 3 seconds");
       delay(5000);
     }
   }
 
   if (tries == 3) {
+    Serial.println("Mqtt connection was not possible");
     do_deep_sleep();
   }
 }
@@ -247,6 +251,24 @@ void callback(String &topic, String &payload) {
   Serial.println(payload);
 
   // TODO: Handle topic logic
+  if (topic == "GRUPOG/" + CHIP_ID + "/deep_sleep") {
+    // TODO: Revise in future and save to flash memory
+    deep_sleep_time = payload.toFloat();
+    Serial.println("DeepSleep set to " + (String
+    )deep_sleep_time + " minutes");
+  } else if (topic == "GRUPOG/" + CHIP_ID + "/date_time") {
+    rtc.set(
+      payload.substring(17,19).toInt(),
+      payload.substring(14,16).toInt(),
+      payload.substring(11,13).toInt(),
+      rtc.dayOfWeek(),
+      payload.substring(8,10).toInt(),
+      payload.substring(5,7).toInt()-1,
+      payload.substring(0,4).toInt()-1900
+    );
+    String timestamp = getTimeStamp();
+    Serial.println("Time set to " + timestamp);
+  }
 }
 
 void check_fota() {
@@ -289,29 +311,77 @@ void check_EEPROM() {
   if (check_fota) {
     check_fota();
   }
+
+String getTimeStamp() {
+  delay(10);
+  rtc.refresh();
+
+  String timestamp = ""; //iso8601 (2019-12-12T14:41:38+0000)
+  timestamp.concat(rtc.year()+1900);
+  timestamp.concat("-");
+
+  if (rtc.month()+1 < 10) {
+    timestamp.concat(0);
+  }
+  timestamp.concat(rtc.month()+1);
+  timestamp.concat("-");
+
+  if (rtc.day() < 10) {
+    timestamp.concat(0);
+  }
+  timestamp.concat(rtc.day());
+  timestamp.concat("T");
+
+  timestamp.concat(rtc.hour());
+  timestamp.concat(":");
+
+  if (rtc.minute() < 10) {
+    timestamp.concat(0);
+  }
+  timestamp.concat(rtc.minute());
+  timestamp.concat(":");
+
+  if (rtc.second() < 10) {
+    timestamp.concat(0);
+  }
+  timestamp.concat(rtc.second());
+
+  timestamp.concat("+0");
+  timestamp.concat(utcOffsetInSeconds/3600);
+  timestamp.concat("00");
+
+  return timestamp;
 }
 
 void check_date_time() {
-  configTime(utcOffsetInSeconds, daylightOffsetInSeconds, ntpServer);
-  time_t t_now;
-  //struct tm * timeinfo;
-  //tm_sec  int seconds after the minute  0-60*
-  //tm_min  int minutes after the hour  0-59
-  //tm_hour int hours since midnight  0-23
-  //tm_mday int day of the month  1-31
-  //tm_mon  int months since January  0-11
-  //tm_year int years since 1900  
-  //tm_wday int days since Sunday 0-6
-  //tm_yday int days since January 1  0-365
-  //tm_isdst  int Daylight Saving Time flag 
-  while (!t_now) {
-    time(&t_now);
-    if (t_now) {
-      timeinfo = localtime(&t_now);
-      Serial.println(timeinfo->tm_mday);
-    } else {
-      Serial.println("Failed to obtain time");
-    }
+  // Reset time register
+  struct timezone tz={0,0};
+  struct timeval tv={0,0};
+  settimeofday(&tv, &tz);
+
+  configTime(utcOffsetInSeconds, daylightOffsetInSeconds, "cronos.uma.es");
+
+  int timeout = 0;
+  Serial.print("Waiting for time");
+  while (!time(nullptr) && timeout < 5000) {
+    Serial.print(".");
+    delay(500);
+  }
+  Serial.println();
+
+  if (timeout == 5000) {
+    Serial.print("Time could not be retrieved");
+  } else {
+    time_t now = time(nullptr);
+    struct tm * timeinfo = localtime(&now);
+    Serial.println(now);
+
+    Wire.begin(4, 5); // D1 (SCL) and D2 (SDA) on ESP8266
+    
+    rtc.set(timeinfo->tm_sec, timeinfo->tm_min, timeinfo->tm_hour, timeinfo->tm_wday, timeinfo->tm_mday, timeinfo->tm_mon, timeinfo->tm_year);
+    
+    String timestamp = getTimeStamp();
+    Serial.println(timestamp);
   }
 }
 
@@ -324,12 +394,12 @@ void setup() {
   
   check_EEPROM();
 
-  client.begin(mqtt_server, espClient);
-  client.onMessage(callback);
-
   check_date_time();
   
-  dht.setup(5, DHTesp::DHT11);
+  client.begin(mqtt_server, espClient);
+  client.onMessage(callback);
+  
+  dht.setup(2, DHTesp::DHT11);
 }
 
 void loop() {
@@ -338,46 +408,29 @@ void loop() {
   }
   client.loop();
   delay(10); // Advised for stability
-
-  //Declare variables to hold the data values
-  t_Device Device;
-  t_Sensor Sensor;
-  String json, topic;
   
   //Get device data values 
-  Device = get_device_data();
-
+  t_Device Device = get_device_data();
+  
   //Serialize and publish device data
-  json = device_serialize_JSON(Device);
+  String json = device_serialize_JSON(Device);
 
-  //Obtain topic name adding the chip ID
-  topic = String("GRUPOG/" + CHIP_ID + "/device");
-
-  client.publish(topic.c_str(), json.c_str());
+  client.publish(String("GRUPOG/" + CHIP_ID + "/device"), json, false, 1);
   Serial.print("Publish message: ");
   Serial.println(json.c_str());
   
   //Get sensor data values
-  Sensor = get_sensor_data();
+  t_Sensor Sensor = get_sensor_data();
 
   //Serialize and publish sensor data
   json = sensor_serialize_JSON(Sensor);
   
-  //Obtain topic name adding the chip ID
-  topic = String("GRUPOG/" + CHIP_ID + "/sensor");
-  
-  client.publish(topic.c_str(), json.c_str());
+  client.publish(String("GRUPOG/" + CHIP_ID + "/sensor"), json, false, 1);
   Serial.print("Publish message: ");
   Serial.println(json.c_str());
 
-  //Deep-sleep for 3s. Small wait just in case
-  lastTime = millis();
-  nowTime = lastTime;
-  while(nowTime - lastTime < 1000){
-    nowTime = millis();
-    client.loop();
-    delay(10); // Advised for stability
-  }
+  client.loop();
+  delay(10); // Advised for stability
 
   do_deep_sleep();
 }
