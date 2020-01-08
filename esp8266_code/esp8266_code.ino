@@ -35,7 +35,7 @@ String CHIP_ID = "BEST_Arduino"; //TODO: Get real chipID
 // Struct types
 
 typedef struct {
-  int   reinicios;
+  int   reboot_counter;
 } t_EEPROM;
 
 typedef struct {
@@ -295,22 +295,23 @@ void check_EEPROM() {
   EEPROM.begin(8); // Use just 8 bytes
   if (EEPROM.percentUsed() > 0) {
     EEPROM.get(0, EEPROM_data);
-    if (EEPROM_data.reinicios == 5) {
+    if (EEPROM_data.reboot_counter == 5) {
       check_fota = true;
     } else {
-      counter = EEPROM_data.reboots + 1;
+      counter = EEPROM_data.reboot_counter + 1;
       EEPROM.put(0, EEPROM_data);
       EEPROM.commit();
     }
   }
   
-  EEPROM_data.reboots = counter;
+  EEPROM_data.reboot_counter = counter;
   EEPROM.put(0, EEPROM_data);
   EEPROM.commit(); 
   
   if (check_fota) {
     check_fota();
   }
+}
 
 String getTimeStamp() {
   delay(10);
