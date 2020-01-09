@@ -543,7 +543,7 @@ void loop() {
   //Serialize and publish data
   String json = data_serialize_JSON(sensor_data, device_data);
 
-  client.publish(String("GRUPOG/" + CHIP_ID + "/device"), json, false, 1);
+  client.publish(String("GRUPOG/" + CHIP_ID + "/sensor"), json, false, 1);
   Serial.print("Publish message: ");
   Serial.println(json.c_str());
 
