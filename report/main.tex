@@ -1,0 +1,128 @@
+\documentclass[paper=a4, fontsize=11pt]{scrartcl}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%-----------------------PAGE SETTINGS----------------------------%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc} %To support Spanish characters
+\usepackage[spanish]{babel}
+\def\spanishoperators{}
+\usepackage{csquotes}
+\usepackage[a4paper, margin= 1in,includefoot]{geometry} % Page dimensions
+%%% Custom sectioning
+\usepackage{sectsty}
+\allsectionsfont{\centering}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%--------------------------PREAMBLE------------------------------%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Support the \includegraphics command and options
+\usepackage{graphicx} 
+%---------------------------------------------------------------------------------------------%
+% Package for managing IS units
+\usepackage{siunitx}
+%---------------------------------------------------------------------------------------------%
+% Package for bibliography
+\usepackage{biblatex}
+\addbibresource{references.bib}
+%---------------------------------------------------------------------------------------------%
+
+% Microtype uses different techniques to improve readability and presentation. It is and advanced plugin. Some documentation can be found: http://www.khirevich.com/latex/microtype/
+
+\usepackage[activate={true,nocompatibility},final,tracking=true,kerning=true,spacing=true,factor=1100,stretch=10,shrink=10]{microtype}
+% activate={true,nocompatibility} - activate protrusion and expansion
+% final - enable microtype; use "draft" to disable
+% tracking=true, kerning=true, spacing=true - activate these techniques
+% factor=1100 - add 10% to the protrusion amount (default is 1000)
+% stretch=10, shrink=10 - reduce stretchability/shrinkability (default is 20/20)
+
+\SetExtraKerning[unit=space]
+    {encoding={*}, family={bch}, series={*}, size={footnotesize,small,normalsize}}
+    {\textendash={400,400}, % en-dash, add more space around it
+     "28={ ,150}, % left bracket, add space from right
+     "29={150, }, % right bracket, add space from left
+     \textquotedblleft={ ,150}, % left quotation mark, space from right
+     \textquotedblright={150, }} % right quotation mark, space from left
+
+% Additional packages for customization
+% TODO
+\usepackage{caption}
+\usepackage{subcaption}
+%\usepackage{lmodern}
+%\usepackage{times}
+%\usepackage[expert]{mathdesign}
+% \usepackage[parfill]{parskip} % Activate to begin paragraphs with an empty line rather than an indent
+%\usepackage{booktabs} % for much better looking tables
+%\usepackage{array} % for better arrays (eg matrices) in maths
+%\usepackage{paralist} % very flexible & customised lists (eg. enumerate/itemize, etc.)
+%\usepackage{verbatim} % adds environment for commenting out blocks of text & for better verbatim
+%\usepackage{subfig} % make it possible to include more than one captioned figure/table in a single float
+%\usepackage{lastpage}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%-----------------------DOCUMENT BEGIN---------------------------%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%---------------------------------------------------------------------------------------------%
+
+% Title
+
+\title{
+    {\huge{\bfseries Huerto inteligente}}\\
+    {\large{Informática Industrial}}\\
+    }
+
+\author{
+    David Morilla Cabello
+    \and
+    Yeray García Concejero
+    \and
+   Ana Piñeiro Gómez
+    \and
+    Miguel Antonio Salazar del Río 
+    }
+
+\date{Enero 2020}
+
+%---------------------------------------------------------------------------------------------%
+
+% Header and footer
+
+\usepackage{fancyhdr} % This should be set AFTER setting up the page geometry
+\pagestyle{fancy} % options: empty , plain , fancy
+
+%Header
+\fancyhead{}
+\renewcommand{\headrulewidth}{0.4pt}
+\fancyhead[R]{\small \textsf{ESCUELA DE INGENIERÍAS INDUSTRIALES\\ Informática Industrial\\Huerto Inteligente\\}}
+\fancyhead[L]{\includegraphics[scale=0.5]{./figuras/logoUMA.png}\\}
+\setlength{\headheight}{62pt} % This is specific for the logo
+
+%Footer
+
+\fancyfoot{}
+\renewcommand{\footrulewidth}{0.4pt}
+\fancyfoot[R]{\thepage}
+\fancyfoot[C]{Sección \thesection}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%-----------------------DOCUMENT BEGIN---------------------------%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{document}
+
+\input{titlepage.tex}
+\pagestyle{plain}
+\tableofcontents
+\newpage
+\pagestyle{fancy}
+
+\input{sections/introduccion.tex}
+\input{sections/objetivos.tex}
+\input{sections/dishardware.tex}
+\input{sections/dissoftware.tex}
+\input{sections/consumooptimizacion.tex}
+\input{sections/conclusion.tex}
+\printbibliography
+\input{sections/manual.tex}
+\input{sections/listaArchivos.tex}
+
+\end{document}
