@@ -22,13 +22,13 @@
 
 Adafruit_ADS1015 ads1015; // Construct an ads1015 at the default address: 0x48 (GROUND)
 
-#define ONE_WIRE_BUS 3 // Data wire is plugged into digital pin 3 on the Arduino
+#define ONE_WIRE_BUS 0 // Data wire is plugged into digital pin 3 on the Arduino
 OneWire oneWire(ONE_WIRE_BUS); // Setup a oneWire instance to communicate with any OneWire device
 DallasTemperature sensors(&oneWire); // Pass oneWire reference to DallasTemperature library
 
 // Connection parameters
-const char* ssid = "infind";
-const char* password = "1518wifi";
+String ssid = "infind";
+String password = "1518wifi";
 const char* mqtt_server = "172.16.53.131";
 
 // General objects
@@ -91,23 +91,23 @@ typedef struct {
 
 typedef struct {
   int light;
-  String state;
+  int state;
 } t_LightmeterData;
 
 typedef struct {
   float temperature;
   float humidity;
-  String state;
+  int state;
 } t_DH11Data;
 
 typedef struct {
   float ground_temperature;
-  String state;
+  int state;
 } t_ds18b20Data;
 
 typedef struct {
   float ground_humidity;
-  String state;
+  int state;
 } t_hl69Data;
 
 typedef struct {
@@ -127,7 +127,6 @@ String data_serialize_JSON(t_Sensor &sensor_data, t_Device &device_data) {
   JSONVar jsonRoot;
   JSONVar device;
   JSONVar sensors;
-  String jsonString;
 
   // Set sensors data as body
   sensors["DH11"]["temperature"] = sensor_data.DH11.temperature;
@@ -140,8 +139,8 @@ String data_serialize_JSON(t_Sensor &sensor_data, t_Device &device_data) {
   sensors["HL_69"]["ground_humidity"]= sensor_data.HL_69.ground_humidity;
   sensors["HL_69"]["state"]= sensor_data.HL_69.state;
   
-  sensors["HL_69"]["ground_humidity"]= sensor_data.DS18B20.ground_temperature;
-  sensors["HL_69"]["state"]= sensor_data.DS18B20.state;
+  sensors["DS18B20"]["ground_temperature"]= sensor_data.DS18B20.ground_temperature;
+  sensors["DS18B20"]["state"]= sensor_data.DS18B20.state;
 
   sensors["Error_Code"] = sensor_data.Error_Code.code;
 
@@ -169,7 +168,6 @@ String data_serialize_JSON(t_Sensor &sensor_data, t_Device &device_data) {
 
 t_Device get_device_data() {
   //Gets the information from the device and returns a struct with this data.
-  
   t_Device Device;
   
   //Get Board data
@@ -186,28 +184,31 @@ t_Device get_device_data() {
   Device.WifiModule.data.rssi =  WiFi.RSSI();
   
   //Get WifiModule conf
-  Device.WifiModule.conf.ssid = WiFi.SSID();
+  Device.WifiModule.conf.ssid = ssid;
+  Device.WifiModule.conf.password = password;
   Device.WifiModule.conf.mqtt_server = mqtt_server;
 
   return Device;
 }
 
 t_Sensor get_sensor_data(){
-  //Gets the information from the sensors and returns a struct with this data.
-  
+  //Gets the information from the sensors and returns a struct with this data
   t_Sensor Sensor;
 
   //Get DH11 data
   Sensor.DH11.temperature = dht.getTemperature();
   Sensor.DH11.humidity = dht.getHumidity();
+  Serial.println(Sensor.DH11.temperature);
+  Serial.println(Sensor.DH11.humidity);
 
   //Get LightSensor data
   Sensor.LightSensor.light = analogRead(A0);
+  Serial.println(Sensor.LightSensor.light);
   Sensor.LightSensor.light = map(Sensor.LightSensor.light,0,1023,0,1850);//Max value of the light sensor: 1850 W/m2
+  Serial.println(Sensor.LightSensor.light);
   
    //Get HL-69 data
-  int16_t hl_69;
-  hl_69 = ads1015.readADC_SingleEnded(0);
+  int16_t hl_69 = ads1015.readADC_SingleEnded(0);
   //Max value given by ads1015: 1646. Max value of ground_humidity: 100%
   Sensor.HL_69.ground_humidity = map(hl_69,0,1646,0,100);
 
@@ -222,16 +223,16 @@ t_Sensor get_sensor_data(){
 }
 
 void setup_wifi() {  
-  wifiManager.setConnectTimeout(10); // 10s timeout to connect to wifi
+  wifiManager.setConnectTimeout(15); // 15s timeout to connect to wifi
   wifiManager.setConfigPortalTimeout(300); // 5min timeout to configure wifi access
 
-  if(!wifiManager.autoConnect()) {
+  if(!wifiManager.autoConnect(("ESP8266_" + CHIP_ID).c_str(), "1234")) {
     Serial.println("Wifi configuration or connection timeout");
     do_deep_sleep();
   }
 
-  ssid = WiFi.SSID().c_str();
-  password = WiFi.psk().c_str();
+  ssid = WiFi.SSID();
+  password = WiFi.psk();
 
   Serial.println("WiFi connected");
   Serial.print("SSID: ");
@@ -338,7 +339,7 @@ void check_EEPROM() {
   bool do_check_fota = false;
   int counter = 0;
   
-  EEPROM.begin(8); // Use just 8 bytes
+  EEPROM.begin(128); // Use just 8 bytes
   if (EEPROM.percentUsed() > 0) {
     EEPROM.get(0, EEPROM_data);
     
@@ -348,7 +349,10 @@ void check_EEPROM() {
       counter = EEPROM_data.reboot_counter + 1;
     }
   }
-  
+
+  Serial.print("Number of reboots: ");
+  Serial.println(EEPROM_data.reboot_counter);
+  Serial.println(counter);
   EEPROM_data.reboot_counter = counter;
   EEPROM.put(0, EEPROM_data);
   EEPROM.commit(); 
@@ -399,19 +403,19 @@ String getTimeStamp() {
   return timestamp;
 }
 
-t_Sensor Error_Control(t_Sensor S){
+t_Sensor Error_Control(t_Sensor S) {
   int num_errors = 0;
   //State of DH11 sensor
-  if ((S.DH11.temperature > 0 & S.DH11.temperature <= 50)& (S.DH11.humidity >= 20 & S.DH11.humidity <= 90)){
-    S.DH11.state = "Active";
+  if ((S.DH11.temperature > 0 & S.DH11.temperature <= 50)& (S.DH11.humidity >= 20 & S.DH11.humidity <= 90)) {
+    S.DH11.state = 0;
   }
   else {
     // TODO: Comprobar si cuando están desactivados dan un valor 0
-    if (S.DH11.temperature == 0 & S.DH11.humidity == 0){
-    S.DH11.state = "Disconnected";
+    if (S.DH11.temperature == 0 & S.DH11.humidity == 0) {
+      S.DH11.state = 1;
     }
     else {
-      S.DH11.state = "Not calibrated";
+      S.DH11.state = 2;
     }
     S.DH11.temperature = -999;
     S.DH11.humidity = -999;
@@ -419,16 +423,16 @@ t_Sensor Error_Control(t_Sensor S){
   }
 
   //State of Light sensor
-  if(S.LightSensor.light > 0 & S.LightSensor.light <= 1850){
-    S.LightSensor.state = "Active";
+  if (S.LightSensor.light > 0 & S.LightSensor.light <= 1850) {
+    S.LightSensor.state = 0;
   }
   else {
     // TODO: Comprobar si cuando están desactivados dan un valor 0
-    if (S.LightSensor.light == 0){
-      S.LightSensor.state = "Disconnected";
+    if (S.LightSensor.light == 0) {
+      S.LightSensor.state = 1;
     }
     else {
-      S.LightSensor.state = "Not calibrated";
+      S.LightSensor.state = 2;
     }
     S.LightSensor.light = -999;
     num_errors = num_errors + 1;
@@ -436,31 +440,31 @@ t_Sensor Error_Control(t_Sensor S){
   
   //State of HL_69 sensor
   //TODO: comprobar el valor exacto que marca cuando está desactivado (creo que estaba en torno a 300)
-  if (S.HL_69.ground_humidity >= 300 & S.HL_69.ground_humidity <= 1646){
-        S.HL_69.state = "Active";
+  if (S.HL_69.ground_humidity >= 0 & S.HL_69.ground_humidity <= 100) {
+        S.HL_69.state = 0;
   }
   else {
-    S.HL_69.state = "Disconnected or not calibrated";
+    S.HL_69.state = 1;
     S.HL_69.ground_humidity = -999;
     num_errors = num_errors + 1;
   }
 
   //State of DS18B20 sensor
-  if (S.DS18B20.ground_temperature >= -55 & S.DS18B20.ground_temperature <= 125){
-    S.DS18B20.state = "Active";
+  if (S.DS18B20.ground_temperature >= -55 & S.DS18B20.ground_temperature <= 125) {
+    S.DS18B20.state = 0;
   }
   else {
-    if (S.DS18B20.ground_temperature <= -125){
-      S.DS18B20.state = "Disconnected";
+    if (S.DS18B20.ground_temperature <= -125) {
+      S.DS18B20.state = 1;
     }
     else {
-      S.DS18B20.state = "Not calibrated";
+      S.DS18B20.state = 2;
     }
     S.DS18B20.ground_temperature = -999;
     num_errors = num_errors + 1;
   }
   
-    if (num_errors == 0){
+  if (num_errors == 0){
     S.Error_Code.code = 0;
   } else {
     S.Error_Code.code = -1;
@@ -514,6 +518,7 @@ void setup() {
     }
 
   CHIP_ID = (String) ESP.getFlashChipId();
+  Serial.println(CHIP_ID);
   
   setup_wifi();
   
