@@ -14,7 +14,7 @@
 #include <DallasTemperature.h>
 
 //Define macros
-#define HTTP_OTA_ADDRESS      F("172.16.53.132")       //TODO arrange this as configurable info //Address of OTA update server
+#define HTTP_OTA_ADDRESS      F("172.16.53.132")       //Address of OTA update server
 #define HTTP_OTA_PATH         F("/esp8266-ota/update") // Path to update firmware
 #define HTTP_OTA_PORT         1880                     // Port of update server
                                                        // Name of firmware
@@ -44,10 +44,9 @@ int reboots_fota = 5;
 const int utcOffsetInSeconds = 0;
 const int  daylightOffsetInSeconds = 3600;
 const char* ntpServer = "cronos.uma.es";
-String CHIP_ID = "BEST_Arduino"; //TODO: Get real chipID
+String CHIP_ID;
 
 // Struct types
-
 typedef struct {
   int   reboot_counter;
 } t_EEPROM;
@@ -260,12 +259,16 @@ void reconnect() {
     String clientId = "ESP8266Client-";
     clientId += String(random(0xffff), HEX);
 
-    // TODO: Change
     if (client.connect(clientId.c_str())) {
       Serial.println("connected");
       client.setWill(String("GRUPOG/" + CHIP_ID + "/status").c_str(), "GrupoG Offline", true, 1);
       client.publish("GRUPOG/" + CHIP_ID + "/status", "GrupoG Online", true, 1);
       client.subscribe("GRUPOG/" + CHIP_ID + "/deep_sleep", 1);
+      client.subscribe("GRUPOG/" + CHIP_ID + "/reboots_fota", 1);
+      client.subscribe("GRUPOG/" + CHIP_ID + "/manual_date_time", 1);
+      client.subscribe("GRUPOG/" + CHIP_ID + "/check_date_time", 1);
+      client.subscribe("GRUPOG/" + CHIP_ID + "/ntp_date_time", 1);
+      // TODO: Check for collision in time actions at startup
       client.loop();
       delay(10); // Advised for stability
     } else {
@@ -289,11 +292,9 @@ void callback(String &topic, String &payload) {
   Serial.println(payload);
 
   if (topic == "GRUPOG/" + CHIP_ID + "/deep_sleep") {
-    // TODO: Revise in future and save to flash memory
     deep_sleep_time = payload.toFloat();
     Serial.println("DeepSleep set to " + (String)deep_sleep_time + " minutes");
   } else if (topic == "GRUPOG/" + CHIP_ID + "/reboots_fota") {
-    // TODO: Revise in future and save to flash memory
     reboots_fota = payload.toFloat();
     Serial.println("FOTA is going to be checked every " + (String)reboots_fota + " reboots");
   } else if (topic == "GRUPOG/" + CHIP_ID + "/manual_date_time") {
@@ -310,10 +311,10 @@ void callback(String &topic, String &payload) {
     String timestamp = getTimeStamp();
     Serial.println("Time set to " + timestamp);
   } else if (topic == "GRUPOG/" + CHIP_ID + "/check_date_time") {
-    check_date_time();
+    check_date_time(true);
   } else if (topic == "GRUPOG/" + CHIP_ID + "/ntp_date_time") {
     ntpServer = payload.c_str();
-    check_date_time();
+    check_date_time(true);
     ntpServer = "cronos.uma.es";
   }
 }
@@ -360,47 +361,6 @@ void check_EEPROM() {
   if (do_check_fota) {
     check_fota();
   }
-}
-
-String getTimeStamp() {
-  delay(10);
-  rtc.refresh();
-
-  String timestamp = ""; // ISO8601 (2019-12-12T14:41:38+0000)
-  timestamp.concat(rtc.year()+1900);
-  timestamp.concat("-");
-
-  if (rtc.month()+1 < 10) {
-    timestamp.concat(0);
-  }
-  timestamp.concat(rtc.month()+1);
-  timestamp.concat("-");
-
-  if (rtc.day() < 10) {
-    timestamp.concat(0);
-  }
-  timestamp.concat(rtc.day());
-  timestamp.concat("T");
-
-  timestamp.concat(rtc.hour());
-  timestamp.concat(":");
-
-  if (rtc.minute() < 10) {
-    timestamp.concat(0);
-  }
-  timestamp.concat(rtc.minute());
-  timestamp.concat(":");
-
-  if (rtc.second() < 10) {
-    timestamp.concat(0);
-  }
-  timestamp.concat(rtc.second());
-
-  timestamp.concat("+0");
-  timestamp.concat(utcOffsetInSeconds/3600);
-  timestamp.concat("00");
-
-  return timestamp;
 }
 
 t_Sensor Error_Control(t_Sensor S) {
@@ -473,8 +433,62 @@ t_Sensor Error_Control(t_Sensor S) {
   return S;
 }
 
+String getTimeStamp() {
+  delay(10);
+  rtc.refresh();
 
-void check_date_time() {
+  String timestamp = ""; // ISO8601 (2019-12-12T14:41:38+0000)
+  timestamp.concat(rtc.year()+1900);
+  timestamp.concat("-");
+
+  if (rtc.month()+1 < 10) {
+    timestamp.concat(0);
+  }
+  timestamp.concat(rtc.month()+1);
+  timestamp.concat("-");
+
+  if (rtc.day() < 10) {
+    timestamp.concat(0);
+  }
+  timestamp.concat(rtc.day());
+  timestamp.concat("T");
+
+  timestamp.concat(rtc.hour());
+  timestamp.concat(":");
+
+  if (rtc.minute() < 10) {
+    timestamp.concat(0);
+  }
+  timestamp.concat(rtc.minute());
+  timestamp.concat(":");
+
+  if (rtc.second() < 10) {
+    timestamp.concat(0);
+  }
+  timestamp.concat(rtc.second());
+
+  timestamp.concat("+0");
+  timestamp.concat(utcOffsetInSeconds/3600);
+  timestamp.concat("00");
+
+  return timestamp;
+}
+
+bool compare_data_time(tm * online) {
+  // Check if +-2 min from online
+  if ((rtc.year()+1900 == online->tm_year) &&
+    (rtc.month()+1 == online->tm_mon) &&
+    (rtc.day() == online->tm_mday) &&
+    (rtc.hour() == online->tm_hour) &&
+    (rtc.minute() > online->tm_min -2) &&
+    (rtc.minute() < online->tm_min +2)) {
+    return true;
+  } else {
+    return false; 
+  }   
+}
+
+void check_date_time(bool force) {
   // Reset time register
   struct timezone tz={0,0};
   struct timeval tv={0,0};
@@ -499,7 +513,18 @@ void check_date_time() {
 
     Wire.begin(4, 5); // D1 (SCL) and D2 (SDA) on ESP8266
     
-    rtc.set(timeinfo->tm_sec, timeinfo->tm_min, timeinfo->tm_hour, timeinfo->tm_wday, timeinfo->tm_mday, timeinfo->tm_mon, timeinfo->tm_year);
+    // If force is enable, don't compare +-2 with online clock before setting it
+    if (force) {
+      Serial.println("Forced time set");
+      rtc.set(timeinfo->tm_sec, timeinfo->tm_min, timeinfo->tm_hour, timeinfo->tm_wday, timeinfo->tm_mday, timeinfo->tm_mon, timeinfo->tm_year);
+    } else {
+      if (!compare_data_time(timeinfo)) {
+        Serial.println("Local time does not match with online (+-2min). Time set");
+        rtc.set(timeinfo->tm_sec, timeinfo->tm_min, timeinfo->tm_hour, timeinfo->tm_wday, timeinfo->tm_mday, timeinfo->tm_mon, timeinfo->tm_year);
+      } else {
+        Serial.println("Local time matches online one");  
+      }
+    }
     
     String timestamp = getTimeStamp();
     Serial.println(timestamp);
@@ -524,7 +549,7 @@ void setup() {
   
   check_EEPROM();
 
-  check_date_time();
+  check_date_time(false);
   
   client.begin(mqtt_server, espClient);
   client.onMessage(callback);
