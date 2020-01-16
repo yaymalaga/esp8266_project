@@ -10,6 +10,8 @@
 #include <ESP8266WebServer.h>     //Local WebServer used to serve the configuration portal
 #include <WiFiManager.h>
 #include <Adafruit_ADS1015.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
@@ -25,6 +27,13 @@ Adafruit_ADS1015 ads1015; // Construct an ads1015 at the default address: 0x48 (
 #define ONE_WIRE_BUS 0 // Data wire is plugged into digital pin 3 on the Arduino
 OneWire oneWire(ONE_WIRE_BUS); // Setup a oneWire instance to communicate with any OneWire device
 DallasTemperature sensors(&oneWire); // Pass oneWire reference to DallasTemperature library
+
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 64 // OLED display height, in pixels
+#define GREEN 0x07E0
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1); //The -1 parameter means that our OLED dislay
+                                                                  //doesnt have a reset pin
 
 // Connection parameters
 String ssid = "infind";
@@ -243,6 +252,7 @@ void setup_wifi() {
 }
 
 void do_deep_sleep() {
+  write_to_display(0, 35, "ESTADO: apagado.  ");
   Serial.println("Good night!");
   ESP.deepSleep(deep_sleep_time*1000000);
   delay(5000);
@@ -531,6 +541,28 @@ void check_date_time(bool force) {
   }
 }
 
+void write_to_display(int x, int y, String text) {
+  display.setTextSize(0.05); 
+  display.setTextColor(WHITE, BLACK);                                                   ");  
+  display.setCursor(x,y);
+  display.println(text);
+  display.display();
+  delay(100); // TODO: TEST
+}
+
+void display_data(int luminosity, float temperature, float humidity) {
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C)
+
+  delay(500); // TODO: TEST
+
+  display.clearDisplay(); //clear the display buffer
+
+  write_to_display(0, 5, "Temperatura: " + (String)t + " C");
+  write_to_display(0, 15, "Humedad: " + (String)h + " %");
+  write_to_display(0, 25, "Luminosidad: " + (String)l + "W/m2");
+  write_to_display(0, 35, "ESTADO: encendido");
+}
+
 void setup() {
   Serial.begin(115200);
 
@@ -569,6 +601,9 @@ void loop() {
   
   //Get sensor data values
   t_Sensor sensor_data = get_sensor_data();
+
+  //Display sensor data
+  display_data(sensor_data.LightSensor.light, sensor_data.DH11.temperature, sensor_data.DH11.humidity);
   
   //Serialize and publish data
   String json = data_serialize_JSON(sensor_data, device_data);
