@@ -366,8 +366,9 @@ t_Sensor Error_Control(t_Sensor S) {
     S.DH11.state = 0;
   }
   else {
-    // TODO: Comprobar si cuando están desactivados dan un valor 0
-    if (S.DH11.temperature == 0 & S.DH11.humidity == 0) {
+    //Disconnected sensor gives a value around 2*10^10. For this reason, if the sensor reading is a number, out of the
+    // previously defined range, it is considered disconnected rather than not calibrated. 
+    if (!isnan(S.DH11.temperature) & !isnan(S.DH11.humidity) {
       S.DH11.state = 1;
     }
     else {
@@ -383,24 +384,25 @@ t_Sensor Error_Control(t_Sensor S) {
     S.LightSensor.state = 0;
   }
   else {
-    // TODO: Comprobar si cuando están desactivados dan un valor 0
-    if (S.LightSensor.light == 0) {
-      S.LightSensor.state = 1;
-    }
-    else {
-      S.LightSensor.state = 2;
-    }
+    // When the sensor is disconnected gives a value between 350 and 500, therefore it is not
+    //possible to check if it is connected or disconnected. TODO: check on ESP8266.
+    S.LightSensor.state = 2;
     S.LightSensor.light = -999;
     num_errors = num_errors + 1;
   }
   
   //State of HL_69 sensor
-  //TODO: comprobar el valor exacto que marca cuando está desactivado (creo que estaba en torno a 300)
-  if (S.HL_69.ground_humidity >= 0 & S.HL_69.ground_humidity <= 100) {
+  if (S.HL_69.ground_humidity >= 0 & S.HL_69.ground_humidity <= 95) {
         S.HL_69.state = 0;
   }
   else {
-    S.HL_69.state = 1;
+    //Disconnected gives a value between 95 and 105
+    if (S.HL_69.ground_humidity > 95 & S.HL_69.ground_humidity <= 105){
+       S.HL_69.state = 1;
+    }
+    else {
+      S.HL_69.state = 1;
+    }
     S.HL_69.ground_humidity = -999;
     num_errors = num_errors + 1;
   }
@@ -410,7 +412,8 @@ t_Sensor Error_Control(t_Sensor S) {
     S.DS18B20.state = 0;
   }
   else {
-    if (S.DS18B20.ground_temperature <= -125) {
+    //Disconnected gives a value between -125 and -130
+    if (S.DS18B20.ground_temperature <= -125 & S.DS18B20.ground_temperature >= -130) {
       S.DS18B20.state = 1;
     }
     else {
