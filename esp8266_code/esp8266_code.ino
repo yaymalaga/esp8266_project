@@ -197,14 +197,10 @@ t_Sensor get_sensor_data(){
   //Get DH11 data
   Sensor.DH11.temperature = dht.getTemperature();
   Sensor.DH11.humidity = dht.getHumidity();
-  Serial.println(Sensor.DH11.temperature);
-  Serial.println(Sensor.DH11.humidity);
 
   //Get LightSensor data
   Sensor.LightSensor.light = analogRead(A0);
-  Serial.println(Sensor.LightSensor.light);
   Sensor.LightSensor.light = map(Sensor.LightSensor.light,0,1023,0,1850);//Max value of the light sensor: 1850 W/m2
-  Serial.println(Sensor.LightSensor.light);
   
    //Get HL-69 data
   int16_t hl_69 = ads1015.readADC_SingleEnded(0);
@@ -263,12 +259,11 @@ void reconnect() {
       Serial.println("connected");
       client.setWill(String("GRUPOG/" + CHIP_ID + "/status").c_str(), "GrupoG Offline", true, 1);
       client.publish("GRUPOG/" + CHIP_ID + "/status", "GrupoG Online", true, 1);
-      client.subscribe("GRUPOG/" + CHIP_ID + "/deep_sleep", 1);
-      client.subscribe("GRUPOG/" + CHIP_ID + "/reboots_fota", 1);
+      client.subscribe("GRUPOG/" + CHIP_ID + "/deep_sleep", 1); //TODO: Check that the callback is called with retained msg
+      client.subscribe("GRUPOG/" + CHIP_ID + "/reboots_fota", 1); //TODO: Check that the callback is called with retained msg
       client.subscribe("GRUPOG/" + CHIP_ID + "/manual_date_time", 1);
       client.subscribe("GRUPOG/" + CHIP_ID + "/check_date_time", 1);
       client.subscribe("GRUPOG/" + CHIP_ID + "/ntp_date_time", 1);
-      // TODO: Check for collision in time actions at startup
       client.loop();
       delay(10); // Advised for stability
     } else {
@@ -312,10 +307,11 @@ void callback(String &topic, String &payload) {
     Serial.println("Time set to " + timestamp);
   } else if (topic == "GRUPOG/" + CHIP_ID + "/check_date_time") {
     check_date_time(true);
+    Serial.println("Force time set");
   } else if (topic == "GRUPOG/" + CHIP_ID + "/ntp_date_time") {
     ntpServer = payload.c_str();
     check_date_time(true);
-    ntpServer = "cronos.uma.es";
+    Serial.println("NTP set to " + (String)ntpServer);
   }
 }
 
@@ -522,7 +518,7 @@ void check_date_time(bool force) {
         Serial.println("Local time does not match with online (+-2min). Time set");
         rtc.set(timeinfo->tm_sec, timeinfo->tm_min, timeinfo->tm_hour, timeinfo->tm_wday, timeinfo->tm_mday, timeinfo->tm_mon, timeinfo->tm_year);
       } else {
-        Serial.println("Local time matches online one");  
+        Serial.println("Local time matches online one (+-2min)");  
       }
     }
     
@@ -579,10 +575,12 @@ void loop() {
 
   // Wait at least 15s for mqtt qos
   unsigned long lastMillis = millis();
-  while (millis() - lastMillis > 15000) {
+  Serial.println("WAITING");
+  while (millis() - lastMillis < 15000) {
     client.loop();
     delay(500);
   }
+  Serial.println("DONE");
 
   do_deep_sleep();
 }
