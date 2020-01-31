@@ -32,6 +32,10 @@ The following dependencies need to be manually installed in 'Tools' => 'Manage l
 
 - Adafruit_ADS1015
 
+- AAdafruit_SSD1306
+
+- Adafruit_GFX
+
 - OneWire
 
 - DallasTemperature

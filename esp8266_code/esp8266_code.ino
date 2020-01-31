@@ -67,6 +67,7 @@ typedef struct {
 
 typedef struct {
   float deep_sleep_time;
+  float reboots_fota;
 } t_ESP8266Conf;
 
 typedef struct {
@@ -106,7 +107,7 @@ typedef struct {
   float temperature;
   float humidity;
   int state;
-} t_DH11Data;
+} t_DHT11Data;
 
 typedef struct {
   float ground_temperature;
@@ -114,16 +115,16 @@ typedef struct {
 } t_ds18b20Data;
 
 typedef struct {
-  float ground_humidity;
+  int16_t ground_humidity;
   int state;
 } t_hl69Data;
 
 typedef struct {
   int code;
-}t_error;
+} t_error;
 
 typedef struct {
-  t_DH11Data DH11;
+  t_DHT11Data DHT11_data;
   t_LightmeterData LightSensor;
   t_ds18b20Data DS18B20;
   t_hl69Data HL_69;
@@ -137,9 +138,9 @@ String data_serialize_JSON(t_Sensor &sensor_data, t_Device &device_data) {
   JSONVar sensors;
 
   // Set sensors data as body
-  sensors["DH11"]["temperature"] = sensor_data.DH11.temperature;
-  sensors["DH11"]["humidity"] = sensor_data.DH11.humidity;
-  sensors["DH11"]["state"] = sensor_data.DH11.state;
+  sensors["DHT11"]["temperature"] = sensor_data.DHT11_data.temperature;
+  sensors["DHT11"]["humidity"] = sensor_data.DHT11_data.humidity;
+  sensors["DHT11"]["state"] = sensor_data.DHT11_data.state;
   
   sensors["LightSensor"]["light"]= sensor_data.LightSensor.light;
   sensors["LightSensor"]["state"] = sensor_data.LightSensor.state;
@@ -159,6 +160,7 @@ String data_serialize_JSON(t_Sensor &sensor_data, t_Device &device_data) {
   device["Board"]["data"]["chip_id"] = device_data.Board.data.chip_id;
   
   device["Board"]["conf"]["deep_sleep_time"] = device_data.Board.conf.deep_sleep_time;
+  device["Board"]["conf"]["reboots_fota"] = device_data.Board.conf.reboots_fota;
   
   device["WifiModule"]["data"]["ap"] = device_data.WifiModule.data.ap;
   device["WifiModule"]["data"]["bssid"] = device_data.WifiModule.data.bssid;
@@ -184,6 +186,7 @@ t_Device get_device_data() {
   
   //Get Board conf
   Device.Board.conf.deep_sleep_time = deep_sleep_time;
+  Device.Board.conf.reboots_fota = reboots_fota;
 
   //Get WifiModule data
   Device.WifiModule.data.ap = 1;
@@ -204,8 +207,8 @@ t_Sensor get_sensor_data(){
   t_Sensor Sensor;
 
   //Get DH11 data
-  Sensor.DH11.temperature = dht.getTemperature();
-  Sensor.DH11.humidity = dht.getHumidity();
+  Sensor.DHT11_data.temperature = dht.getTemperature();
+  Sensor.DHT11_data.humidity = dht.getHumidity();
 
   //Get LightSensor data
   Sensor.LightSensor.light = analogRead(A0);
@@ -214,7 +217,7 @@ t_Sensor get_sensor_data(){
    //Get HL-69 data
   int16_t hl_69 = ads1015.readADC_SingleEnded(0);
   //Max value given by ads1015: 1646. Max value of ground_humidity: 100%
-  Sensor.HL_69.ground_humidity = map(hl_69,0,1646,0,100);
+  Sensor.HL_69.ground_humidity = map(hl_69,280,1646,100,0);
 
   //Get DS18B20 data
   sensors.requestTemperatures();
@@ -226,30 +229,26 @@ t_Sensor get_sensor_data(){
   return Sensor;
 }
 
-void setup_wifi() {  
+void on_wifi_connection_error(WiFiManager *myWiFiManager) {
+  write_to_display(0, 35, "Wifi: AP ");  
+}
+
+void setup_wifi() {
+  wifiManager.setAPCallback(on_wifi_connection_error);  
   wifiManager.setConnectTimeout(15); // 15s timeout to connect to wifi
-  wifiManager.setConfigPortalTimeout(300); // 5min timeout to configure wifi access
+  wifiManager.setConfigPortalTimeout(120); // 2min timeout to configure wifi access
 
   if(!wifiManager.autoConnect(("ESP8266_" + CHIP_ID).c_str(), "1234")) {
-    Serial.println("Wifi configuration or connection timeout");
     do_deep_sleep();
   }
 
   ssid = WiFi.SSID();
   password = WiFi.psk();
-
-  Serial.println("WiFi connected");
-  Serial.print("SSID: ");
-  Serial.println(ssid);
-  Serial.print("Password: ");
-  Serial.println(password);
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
 }
 
 void do_deep_sleep() {
-  write_to_display(0, 35, "ESTADO: apagado.  ");
-  Serial.println("Good night!");
+  write_to_display(0, 35, "Wifi: OFF");
+  write_to_display(0, 45, "ESTADO: apagado   ");
   ESP.deepSleep(deep_sleep_time*1000000);
   delay(5000);
 }
@@ -259,84 +258,70 @@ void reconnect() {
   while (!client.connected() && tries < 3) {
     tries += 1;
     
-    Serial.print("Attempting MQTT connection...");
-
     // Create a random client ID
     String clientId = "ESP8266Client-";
     clientId += String(random(0xffff), HEX);
 
     if (client.connect(clientId.c_str())) {
-      Serial.println("connected");
       client.setWill(String("GRUPOG/" + CHIP_ID + "/status").c_str(), "GrupoG Offline", true, 1);
       client.publish("GRUPOG/" + CHIP_ID + "/status", "GrupoG Online", true, 1);
-      client.subscribe("GRUPOG/" + CHIP_ID + "/deep_sleep", 1); //TODO: Check that the callback is called with retained msg
-      client.subscribe("GRUPOG/" + CHIP_ID + "/reboots_fota", 1); //TODO: Check that the callback is called with retained msg
+      client.subscribe("GRUPOG/" + CHIP_ID + "/deep_sleep", 1);
+      client.subscribe("GRUPOG/" + CHIP_ID + "/reboots_fota", 1);
       client.subscribe("GRUPOG/" + CHIP_ID + "/manual_date_time", 1);
       client.subscribe("GRUPOG/" + CHIP_ID + "/check_date_time", 1);
       client.subscribe("GRUPOG/" + CHIP_ID + "/ntp_date_time", 1);
       client.loop();
       delay(10); // Advised for stability
     } else {
-      Serial.print("failed, rc=");
-      Serial.print(client.lastError());
-      Serial.println(" trying again in 3 seconds");
       delay(5000);
     }
   }
 
   if (tries == 3) {
-    Serial.println("Mqtt connection was not possible");
     do_deep_sleep();
   }
 }
 
 void callback(String &topic, String &payload) {
-  Serial.print("Message arrived [");
-  Serial.print(topic);
-  Serial.print("]: ");
-  Serial.println(payload);
-
   if (topic == "GRUPOG/" + CHIP_ID + "/deep_sleep") {
     deep_sleep_time = payload.toFloat();
-    Serial.println("DeepSleep set to " + (String)deep_sleep_time + " minutes");
   } else if (topic == "GRUPOG/" + CHIP_ID + "/reboots_fota") {
     reboots_fota = payload.toFloat();
-    Serial.println("FOTA is going to be checked every " + (String)reboots_fota + " reboots");
   } else if (topic == "GRUPOG/" + CHIP_ID + "/manual_date_time") {
-    // ISO8601 (2019-12-12T14:41:38+0000)
-    rtc.set(
-      payload.substring(17,19).toInt(),
-      payload.substring(14,16).toInt(),
-      payload.substring(11,13).toInt(),
-      rtc.dayOfWeek(),
-      payload.substring(8,10).toInt(),
-      payload.substring(5,7).toInt()-1,
-      payload.substring(0,4).toInt()-1900
-    );
-    String timestamp = getTimeStamp();
-    Serial.println("Time set to " + timestamp);
+    if (payload.substring(0,1) == "1") {
+      // ISO8601 (2019-12-12T14:41:38+0000)
+      rtc.set(
+        payload.substring(17,19).toInt(),
+        payload.substring(14,16).toInt(),
+        payload.substring(11,13).toInt(),
+        rtc.dayOfWeek(),
+        payload.substring(8,10).toInt(),
+        payload.substring(5,7).toInt()-1,
+        payload.substring(0,4).toInt()-1900
+      );
+    }
   } else if (topic == "GRUPOG/" + CHIP_ID + "/check_date_time") {
-    check_date_time(true);
-    Serial.println("Force time set");
+    if (payload.substring(0,1) == "2") {
+      if (ntpServer != "cronos.uma.es") {
+        ntpServer = "cronos.uma.es";
+      }
+      check_date_time(true);
+    }
   } else if (topic == "GRUPOG/" + CHIP_ID + "/ntp_date_time") {
-    ntpServer = payload.c_str();
-    check_date_time(true);
-    Serial.println("NTP set to " + (String)ntpServer);
+    if (payload.substring(0,1) == "3") {
+      ntpServer = payload.substring(2).c_str();
+      check_date_time(true);
+    }
   }
 }
 
-void check_fota() {
-  Serial.println( "Preparing to update." );
-  
+void check_fota() {  
   switch(ESPhttpUpdate.update(HTTP_OTA_ADDRESS, HTTP_OTA_PORT, HTTP_OTA_PATH, HTTP_OTA_VERSION)) {
   case HTTP_UPDATE_FAILED:
-    Serial.printf("HTTP update failed: Error (%d): %s\n", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
     break;
   case HTTP_UPDATE_NO_UPDATES:
-    Serial.println(F("No updates"));
     break;
   case HTTP_UPDATE_OK:
-    Serial.println(F("Update OK"));
     break;
   }
 }
@@ -357,9 +342,6 @@ void check_EEPROM() {
     }
   }
 
-  Serial.print("Number of reboots: ");
-  Serial.println(EEPROM_data.reboot_counter);
-  Serial.println(counter);
   EEPROM_data.reboot_counter = counter;
   EEPROM.put(0, EEPROM_data);
   EEPROM.commit(); 
@@ -372,20 +354,20 @@ void check_EEPROM() {
 t_Sensor Error_Control(t_Sensor S) {
   int num_errors = 0;
   //State of DH11 sensor
-  if ((S.DH11.temperature > 0 & S.DH11.temperature <= 50)& (S.DH11.humidity >= 20 & S.DH11.humidity <= 90)) {
-    S.DH11.state = 0;
+  if ((S.DHT11_data.temperature > 0 & S.DHT11_data.temperature <= 50) & (S.DHT11_data.humidity >= 20 & S.DHT11_data.humidity <= 90)) {
+    S.DHT11_data.state = 0;
   }
   else {
     //Disconnected sensor gives a value around 2*10^10. For this reason, if the sensor reading is a number, out of the
     // previously defined range, it is considered disconnected rather than not calibrated. 
-    if (!isnan(S.DH11.temperature) & !isnan(S.DH11.humidity) {
-      S.DH11.state = 1;
+    if (!isnan(S.DHT11_data.temperature) & !isnan(S.DHT11_data.humidity)) {
+      S.DHT11_data.state = 1;
     }
     else {
-      S.DH11.state = 2;
+      S.DHT11_data.state = 2;
     }
-    S.DH11.temperature = -999;
-    S.DH11.humidity = -999;
+    S.DHT11_data.temperature = -999;
+    S.DHT11_data.humidity = -999;
     num_errors = num_errors + 1;
   }
 
@@ -395,7 +377,7 @@ t_Sensor Error_Control(t_Sensor S) {
   }
   else {
     // When the sensor is disconnected gives a value between 350 and 500, therefore it is not
-    //possible to check if it is connected or disconnected. TODO: check on ESP8266.
+    //possible to check if it is connected or disconnected.
     S.LightSensor.state = 2;
     S.LightSensor.light = -999;
     num_errors = num_errors + 1;
@@ -485,8 +467,10 @@ String getTimeStamp() {
 
 bool compare_data_time(tm * online) {
   // Check if +-2 min from online
-  if ((rtc.year()+1900 == online->tm_year) &&
-    (rtc.month()+1 == online->tm_mon) &&
+  rtc.refresh();
+  
+  if ((rtc.year() == online->tm_year) &&
+    (rtc.month() == online->tm_mon) &&
     (rtc.day() == online->tm_mday) &&
     (rtc.hour() == online->tm_hour) &&
     (rtc.minute() > online->tm_min -2) &&
@@ -506,83 +490,77 @@ void check_date_time(bool force) {
   configTime(utcOffsetInSeconds, daylightOffsetInSeconds, ntpServer);
 
   int timeout = 0;
-  Serial.print("Waiting for time");
   while (!time(nullptr) && timeout < 5000) {
-    Serial.print(".");
     delay(500);
   }
-  Serial.println();
 
   if (timeout == 5000) {
-    Serial.print("Time could not be retrieved");
   } else {
     time_t now = time(nullptr);
     struct tm * timeinfo = localtime(&now);
-    Serial.println(now);
 
     Wire.begin(4, 5); // D1 (SCL) and D2 (SDA) on ESP8266
     
     // If force is enable, don't compare +-2 with online clock before setting it
     if (force) {
-      Serial.println("Forced time set");
       rtc.set(timeinfo->tm_sec, timeinfo->tm_min, timeinfo->tm_hour, timeinfo->tm_wday, timeinfo->tm_mday, timeinfo->tm_mon, timeinfo->tm_year);
     } else {
-      if (!compare_data_time(timeinfo)) {
-        Serial.println("Local time does not match with online (+-2min). Time set");
-        rtc.set(timeinfo->tm_sec, timeinfo->tm_min, timeinfo->tm_hour, timeinfo->tm_wday, timeinfo->tm_mday, timeinfo->tm_mon, timeinfo->tm_year);
+      if (compare_data_time(timeinfo)) {
       } else {
-        Serial.println("Local time matches online one (+-2min)");  
-      }
+        rtc.set(timeinfo->tm_sec, timeinfo->tm_min, timeinfo->tm_hour, timeinfo->tm_wday, timeinfo->tm_mday, timeinfo->tm_mon, timeinfo->tm_year);        
+      }   
     }
     
     String timestamp = getTimeStamp();
-    Serial.println(timestamp);
   }
 }
 
 void write_to_display(int x, int y, String text) {
   display.setTextSize(0.05); 
-  display.setTextColor(WHITE, BLACK);                                                   ");  
+  display.setTextColor(WHITE, BLACK);
   display.setCursor(x,y);
   display.println(text);
   display.display();
-  delay(100); // TODO: TEST
+  delay(50);
 }
 
-void display_data(int luminosity, float temperature, float humidity) {
-  display.begin(SSD1306_SWITCHCAPVCC, 0x3C)
-
-  delay(500); // TODO: TEST
-
-  display.clearDisplay(); //clear the display buffer
-
-  write_to_display(0, 5, "Temperatura: " + (String)t + " C");
-  write_to_display(0, 15, "Humedad: " + (String)h + " %");
-  write_to_display(0, 25, "Luminosidad: " + (String)l + "W/m2");
-  write_to_display(0, 35, "ESTADO: encendido");
+void display_data(int luminosity, float temperature, float humidity, bool wifi) {
+  String wifi_status = "OFF";
+  if (wifi) {
+    wifi_status = "ON";
+  }
+  write_to_display(0, 5, "Temperatura: " + (String)temperature + " C");
+  write_to_display(0, 15, "Humedad: " + (String)humidity + " %  ");
+  write_to_display(0, 25, "Luminosidad: " + (String)luminosity + "W/m2   ");
+  write_to_display(0, 35, "Wifi: " + wifi_status + " ");
+  write_to_display(0, 45, "ESTADO: encendido");
 }
 
 void setup() {
-  Serial.begin(115200);
 
-  Serial.println("Booting");
+  // Init display
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  delay(50);
+  display.clearDisplay();
+  display_data(-999,-999,-999, false);
 
   // Check on booting the settings reset button
   pinMode(0, INPUT_PULLUP);
   if (digitalRead(0) == LOW) {
       wifiManager.resetSettings();
-    }
+  }
 
   CHIP_ID = (String) ESP.getFlashChipId();
-  Serial.println(CHIP_ID);
   
   setup_wifi();
+  write_to_display(0, 35, "Wifi: ON ");
   
   check_EEPROM();
 
   check_date_time(false);
   
   client.begin(mqtt_server, espClient);
+  client.setOptions(10, true, 500);
   client.onMessage(callback);
   
   dht.setup(2, DHTesp::DHT11);
@@ -602,23 +580,19 @@ void loop() {
   t_Sensor sensor_data = get_sensor_data();
 
   //Display sensor data
-  display_data(sensor_data.LightSensor.light, sensor_data.DH11.temperature, sensor_data.DH11.humidity);
+  display_data(sensor_data.LightSensor.light, sensor_data.DHT11_data.temperature, sensor_data.DHT11_data.humidity, true);
   
   //Serialize and publish data
   String json = data_serialize_JSON(sensor_data, device_data);
 
   client.publish(String("GRUPOG/" + CHIP_ID + "/sensor"), json, false, 1);
-  Serial.print("Publish message: ");
-  Serial.println(json.c_str());
 
-  // Wait at least 15s for mqtt qos
+  // Wait at least 800ms for mqtt qos 1
   unsigned long lastMillis = millis();
-  Serial.println("WAITING");
-  while (millis() - lastMillis < 15000) {
+  while (millis() - lastMillis < 800) {
     client.loop();
-    delay(500);
+    delay(100);
   }
-  Serial.println("DONE");
 
   do_deep_sleep();
 }
