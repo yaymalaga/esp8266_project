@@ -36,8 +36,8 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1); //The -1 param
                                                                   //doesnt have a reset pin
 
 // Connection parameters
-String ssid = "infind";
-String password = "1518wifi";
+String ssid = "";
+String password = "";
 const char* mqtt_server = "172.16.53.131";
 
 // General objects
@@ -249,11 +249,11 @@ void setup_wifi() {
 void do_deep_sleep() {
   write_to_display(0, 35, "Wifi: OFF");
   write_to_display(0, 45, "ESTADO: apagado   ");
-  ESP.deepSleep(deep_sleep_time*1000000);
+  ESP.deepSleep(deep_sleep_time*60000000);
   delay(5000);
 }
 
-void reconnect() {
+void mqtt_connect() {
   int tries = 0;
   while (!client.connected() && tries < 3) {
     tries += 1;
@@ -273,7 +273,7 @@ void reconnect() {
       client.loop();
       delay(10); // Advised for stability
     } else {
-      delay(5000);
+      delay(1000);
     }
   }
 
@@ -302,15 +302,11 @@ void callback(String &topic, String &payload) {
     }
   } else if (topic == "GRUPOG/" + CHIP_ID + "/check_date_time") {
     if (payload.substring(0,1) == "2") {
-      if (ntpServer != "cronos.uma.es") {
-        ntpServer = "cronos.uma.es";
-      }
       check_date_time(true);
     }
   } else if (topic == "GRUPOG/" + CHIP_ID + "/ntp_date_time") {
     if (payload.substring(0,1) == "3") {
       ntpServer = payload.substring(2).c_str();
-      check_date_time(true);
     }
   }
 }
@@ -490,12 +486,11 @@ void check_date_time(bool force) {
   configTime(utcOffsetInSeconds, daylightOffsetInSeconds, ntpServer);
 
   int timeout = 0;
-  while (!time(nullptr) && timeout < 5000) {
+  while (!time(nullptr) && timeout < 2000) {
     delay(500);
   }
 
-  if (timeout == 5000) {
-  } else {
+  if (timeout != 2000) {
     time_t now = time(nullptr);
     struct tm * timeinfo = localtime(&now);
 
@@ -510,8 +505,6 @@ void check_date_time(bool force) {
         rtc.set(timeinfo->tm_sec, timeinfo->tm_min, timeinfo->tm_hour, timeinfo->tm_wday, timeinfo->tm_mday, timeinfo->tm_mon, timeinfo->tm_year);        
       }   
     }
-    
-    String timestamp = getTimeStamp();
   }
 }
 
@@ -554,25 +547,22 @@ void setup() {
   
   setup_wifi();
   write_to_display(0, 35, "Wifi: ON ");
+
+  client.begin(mqtt_server, espClient);
+  client.setOptions(10, true, 500);
+  client.onMessage(callback);
+  mqtt_connect();
+  client.loop();
+  delay(10); // Advised for stability
   
   check_EEPROM();
 
   check_date_time(false);
   
-  client.begin(mqtt_server, espClient);
-  client.setOptions(10, true, 500);
-  client.onMessage(callback);
-  
   dht.setup(2, DHTesp::DHT11);
 }
 
-void loop() {
-  if (!client.connected()) {
-    reconnect();
-  }
-  client.loop();
-  delay(10); // Advised for stability
-  
+void loop() {  
   //Get device data values 
   t_Device device_data = get_device_data();
   
