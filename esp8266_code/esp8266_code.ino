@@ -216,8 +216,8 @@ t_Sensor get_sensor_data(){
   
    //Get HL-69 data
   int16_t hl_69 = ads1015.readADC_SingleEnded(0);
-  //Max value given by ads1015: 1646. Max value of ground_humidity: 100%
-  Sensor.HL_69.ground_humidity = map(hl_69,280,1646,100,0);
+  //Max value given by ads1015: 1650.
+  Sensor.HL_69.ground_humidity = map(hl_69,280,1650,100,0);
 
   //Get DS18B20 data
   sensors.requestTemperatures();
@@ -354,8 +354,6 @@ t_Sensor Error_Control(t_Sensor S) {
     S.DHT11_data.state = 0;
   }
   else {
-    //Disconnected sensor gives a value around 2*10^10. For this reason, if the sensor reading is a number, out of the
-    // previously defined range, it is considered disconnected rather than not calibrated. 
     if (!isnan(S.DHT11_data.temperature) & !isnan(S.DHT11_data.humidity)) {
       S.DHT11_data.state = 1;
     }
